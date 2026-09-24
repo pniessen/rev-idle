@@ -1374,7 +1374,7 @@ if (typeof module !== 'undefined' && module.exports) {
     u121Pow: 0.5, u171Pow: 0.25, u161Pow: 0.2, u141K: 0.1,
     icRefSec: 36000, ctfMax: 1e4, u163Ref: 3600, passiveInfK: 0.2, u201Ref: 600, u201Cap: 100,
     gpExp14: 0.75, gpExp19: 0.9,
-    starBaseCost: [34, 4], starExpCost: [35, 5], starExpMax: 12, starStepGrow: 1,
+    starBaseCost: [34, 4], starExpCost: [35, 5], starExpMax: 12,
     sdUpgCost: [[1, 2], [Math.log10(20), 1], [Math.log10(50), Math.log10(3)], [2, Math.log10(2)]], sdUpgMax: [9, Infinity, 50, 85],
   });
   const I = E._inf; I.MOD_FNS = []; I.IP_FNS = []; I.PRE_FNS = []; I.GEN_FNS = []; I.GPEXP_FNS = [];
@@ -1393,10 +1393,10 @@ if (typeof module !== 'undefined' && module.exports) {
     { id: '3;2', col: 3, row: 2, name: 'Auto Work', cost: 1, phase: 'A', req: 'prev', desc: 'Unlocks Auto-Promote' },
     { id: '4;1', col: 4, row: 1, name: 'Even Faster Laps', cost: 3, phase: 'A', req: 'prev', desc: 'Lap speed ×1.2' },
     { id: '5;1', col: 5, row: 1, name: 'Long Term Prestiging', cost: 3, phase: 'A', req: ['4;1'], desc: 'P.Mult gain ×min(10, 1+√(t/600))' },
-    { id: '5;2', col: 5, row: 2, name: 'Solid Exponent', cost: 3, phase: 'A', req: ['4;1'], desc: 'P.Exp gain ×(1 + 0.1·log2(1+∞))' },
+    { id: '5;2', col: 5, row: 2, name: 'Solid Exponent', cost: 3, phase: 'A', req: ['4;1'], get desc() { return 'P.Exp gain ×(1 + ' + E.TUNE.u52K + '·log2(1+∞))'; } },
     { id: '5;3', col: 5, row: 3, name: 'Auto Prestige', cost: 3, phase: 'A', req: ['4;1'], desc: 'Unlocks Auto-Prestige' },
     { id: '6;1', col: 6, row: 1, name: 'Mighty Ascension', cost: 3, phase: 'A', req: ['5;1', '5;2'], desc: 'Ascension power base +2' },
-    { id: '6;2', col: 6, row: 2, name: 'Ascend to Ascend', cost: 3, phase: 'A', req: ['5;2', '5;3'], desc: 'Asc power ×(1 + 0.25·log10(1+∞))' },
+    { id: '6;2', col: 6, row: 2, name: 'Ascend to Ascend', cost: 3, phase: 'A', req: ['5;2', '5;3'], get desc() { return 'Asc power ×(1 + ' + E.TUNE.u62K + '·log10(1+∞))'; } },
     // Phase B
     { id: '7;1', col: 7, row: 1, name: 'Challenges!', cost: 5, phase: 'B', req: 'prev', desc: 'Unlocks Infinity Challenges' },
     { id: '8;1', col: 8, row: 1, name: 'Generator and Time', cost: 16, phase: 'B', req: ['7;1'], desc: 'G1 ×(1 + t/60)^0.5' },
@@ -1484,12 +1484,12 @@ if (typeof module !== 'undefined' && module.exports) {
     { n: 1, name: 'Ionized Speed', handicap: 'P2 and P4 disabled', reward: 'P2 and P4 variable parts ×1.5 (permanent)' },
     { n: 2, name: 'Descent', handicap: 'Ascension power ÷4', reward: 'Ascension power ×1.2 (permanent)' },
     { n: 3, name: 'The First Root', handicap: 'commonExp −0.4', reward: 'commonExp +0.03 (permanent)' },
-    { n: 4, name: 'Steep Climbs', handicap: 'Prestige and promote gains ^0.32', reward: 'Promotions start at level 1 after every Infinity; IP ×2' },
+    { n: 4, name: 'Steep Climbs', get handicap() { return 'Prestige and promote gains ^' + E.TUNE.ic4Pow; }, reward: 'Promotions start at level 1 after every Infinity; IP ×2' },
     { n: 5, name: 'Fired From Work', handicap: 'All promotion variable parts ×0.25', reward: 'All promotion variable parts ×1.1 (permanent)' },
     { n: 6, name: 'The Drain', handicap: 'Colour mult logs decay each tick', reward: 'All generators ×2 (permanent)' },
     { n: 7, name: 'Quadratic Division', handicap: 'Product of mults ÷ t²', reward: 'Product of mults × t^0.2 (permanent)' },
     { n: 8, name: 'Noscensions', handicap: 'Ascensions disabled', reward: 'Ascension power base +2 (permanent)' },
-    { n: 9, name: 'Isolationism', handicap: 'Only 3 circles can unlock', reward: '∞ gain ×2; unlocks Break Infinity' },
+    { n: 9, name: 'Isolationism', get handicap() { return 'Only ' + E.TUNE.ic9Circles + ' circles can unlock'; }, reward: '∞ gain ×2; unlocks Break Infinity' },
   ];
   function canStartChallenge(s, n) {
     return !!s.inf.upg['7;1'] && s.inf.ic.active === 0 && (n === 1 || s.inf.ic.done[n - 2]);
@@ -1761,7 +1761,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const n = s.inf.stars.n;
     let cost = 33;
     for (let j = 0; j < n; j++) {
-      const step = j < 18 ? 3 : j < 30 ? 7 : 7 + E.TUNE.starStepGrow * (j - 29); // [W] 3, 7; [R] growth
+      const step = j < 18 ? 3 : j < 30 ? 7 : 7 + (j - 29);
       cost += step;
     }
     return cost;
