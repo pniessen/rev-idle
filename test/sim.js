@@ -456,8 +456,10 @@ const MILESTONE_DEFS = [
   { key: 'run11', name: 'Run length at Infinity 11', mode: 'run', lo: 1500, hi: 2100, floor: 900 },
   { key: 'auto4', name: 'All 4 automations owned', mode: 'idx', lo: -Infinity, hi: 8, floor: null },
   { key: 'ic7_1', name: '7;1 bought (t∞)', mode: 'tinf', lo: 36000, hi: 57600, floor: 28800 },
-  { key: 'ic1', name: 'IC1 attempt', mode: 'dur', lo: 1800, hi: 5400, floor: 900 },
-  { key: 'ic2', name: 'IC2 attempt', mode: 'dur', lo: 1800, hi: 5400, floor: 900 },
+  // Controller ruling (Task 14 round 3): IC1/IC2 20-90 min, Break 42-96 h
+  // (quantised by the 3 h check-ins), Col 17 informational (Break + 0-24 h).
+  { key: 'ic1', name: 'IC1 attempt', mode: 'dur', lo: 1200, hi: 5400, floor: 900 },
+  { key: 'ic2', name: 'IC2 attempt', mode: 'dur', lo: 1200, hi: 5400, floor: 900 },
   { key: 'ic3', name: 'IC3 attempt', mode: 'dur', lo: 1800, hi: 5400, floor: 900 },
   { key: 'ic4', name: 'IC4 attempt', mode: 'dur', lo: 10800, hi: 21600, floor: 7200 },
   { key: 'ic5', name: 'IC5 attempt', mode: 'dur', lo: null, hi: null, floor: null, info: true },
@@ -465,8 +467,8 @@ const MILESTONE_DEFS = [
   { key: 'ic7', name: 'IC7 attempt', mode: 'dur', lo: null, hi: null, floor: null, info: true },
   { key: 'ic8', name: 'IC8 attempt', mode: 'dur', lo: null, hi: null, floor: null, info: true },
   { key: 'ic9', name: 'IC9 attempt', mode: 'dur', lo: 10800, hi: 21600, floor: 7200 },
-  { key: 'break', name: 'All 9 ICs -> Break unlocked (t∞)', mode: 'tinf', lo: 172800, hi: 345600, floor: 144000 },
-  { key: 'col17', name: 'Col 17 (1e6 IP) (t∞)', mode: 'tinf', lo: null, hi: null, floor: null }, // relative to Break; computed below
+  { key: 'break', name: 'All 9 ICs -> Break unlocked (t∞)', mode: 'tinf', lo: 151200, hi: 345600, floor: 144000 },
+  { key: 'col17', name: 'Col 17 (1e6 IP) (t∞)', mode: 'tinf', lo: null, hi: null, floor: null, info: true }, // shown relative to the Break unlock
   { key: 'star1', name: 'First Star (t∞)', mode: 'tinf', lo: 432000, hi: 691200, floor: 345600 },
   { key: 'finale', name: 'Finale (1.79e308 IP) (t∞)', mode: 'tinf', lo: 604800, hi: 1209600, floor: 518400 },
 ];
@@ -476,13 +478,6 @@ function passFail(def, value, ctx) {
   // Controller ruling (Task 14): IC5-IC8 are faithful to the wiki handicaps
   // and expected to take minutes; reported, never a FAIL.
   if (def.info) return 'INFO';
-  if (def.key === 'col17') {
-    if (ctx.breakT === null) return '-';
-    const rel = value - ctx.breakT;
-    const lo = 86400, hi = 172800, floor = 57600;
-    if (rel < floor) return 'FAIL';
-    return rel >= lo && rel <= hi ? 'PASS' : 'FAIL';
-  }
   if (def.floor !== null && value < def.floor) return 'FAIL';
   if (def.lo === -Infinity) return value <= def.hi ? 'PASS' : 'FAIL';
   return value >= def.lo && value <= def.hi ? 'PASS' : 'FAIL';
@@ -500,7 +495,12 @@ function printMilestoneTable(m, ctx) {
     const val = v ? v.value : null;
     const result = v ? passFail(def, val, ctx) : '-';
     let targetStr;
-    if (def.key === 'col17') targetStr = 'Break+1-2d / floor Break+16h';
+    if (def.key === 'col17') {
+      // Both in t∞, anchored on the Break *unlock* (all 9 ICs done), not the check-in that breaks.
+      const b = m.break;
+      const rel = v && b && v.tInf !== null && b.tInf !== null ? fmtT(v.tInf - b.tInf) : '?';
+      targetStr = `info: Break+${rel} (0-24h)`;
+    }
     else if (def.mode === 'idx') targetStr = `<= Infinity ${def.hi}`;
     else if (def.info) targetStr = 'informational (minutes)';
     else targetStr = `${fmtT(def.lo)}-${fmtT(def.hi)} / floor ${fmtT(def.floor)}`;
@@ -789,11 +789,17 @@ function runLayerCore(startState, startT, startTInf1, endT, opts) {
             const beforeInf = lastInfRef(s);
             const beforeInfN = s.stats.lastInfinities.length;
             const beforeIcDone = s.inf.ic.done.slice();
+            const passive = E.passiveInfRate(s) * chunk; // 18;1 part of infinitiesGained (rate ~constant per chunk)
+            const gain = E.infGain(s);
             const result = E.simulate(s, chunk);
             ctx.t += chunk; remaining -= chunk;
             if (lastInfRef(s) !== beforeInf) {
-              const last = s.stats.lastInfinities[s.stats.lastInfinities.length - 1];
-              if (last) { ctx.infinityIndex += Math.max(1, s.stats.lastInfinities.length - beforeInfN); recordMilestone(ctx.milestones, 'inf1', ctx.t, ctx.tInf1, ctx.t); }
+              // lastInfinities is capped at 10, so beyond that count from
+              // simulate's infinitiesGained minus the passive 18;1 share.
+              const seen = s.stats.lastInfinities.length - beforeInfN;
+              const est = Math.round((result.infinitiesGained - passive) / gain);
+              ctx.infinityIndex += Math.max(1, seen, est);
+              recordMilestone(ctx.milestones, 'inf1', ctx.t, ctx.tInf1, ctx.t);
             }
             checkPostRunMilestones(s, ctx, beforeIcDone, result.icCompleted);
           }

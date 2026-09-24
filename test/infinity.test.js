@@ -623,7 +623,7 @@ test('IC2 asc power /4 then x1.2; IC3 exp -0.4 then +0.03', () => {
   s.inf.ic.active = 0; s.inf.ic.done[2] = true; close(E.mods(s).expAdd, 0.03);
 });
 
-test('IC4 gains ^0.4; IC5 promotions x0.25 then x1.1', () => {
+test('IC4 gains ^TUNE.ic4Pow; IC5 promotions x0.25 then x1.1', () => {
   const s = icReady(4); s.inf.ic.active = 4; assert.equal(E.mods(s).gainPow, E.TUNE.ic4Pow);
   s.inf.ic.active = 5; const a = E.mods(s).v; close(a[0], 0.25); close(a[1], 0.375); close(a[2], 0.25); close(a[3], 0.375);
   s.inf.ic.active = 0; s.inf.ic.done[4] = true;
@@ -645,7 +645,7 @@ test('IC8 disables ascension; reward +2 base', () => {
   s.inf.ic.active = 0; s.inf.ic.done[7] = true; assert.equal(E.mods(s).ascBase, 12);
 });
 
-test('IC9 limits to 4 circles; reward doubles Infinities; all done enables Break', () => {
+test('IC9 limits to TUNE.ic9Circles circles; reward doubles Infinities; all done enables Break', () => {
   const s = icReady(9); s.inf.ic.active = 9; assert.equal(E.mods(s).maxCircles, E.TUNE.ic9Circles); assert.ok(!E.canBreak(s));
   s.inf.ic.active = 0; s.inf.ic.done[8] = true; assert.equal(E.infGain(s), 2); assert.ok(E.canBreak(s));
   assert.ok(E.setBroken(s, true)); assert.ok(s.inf.broken);
@@ -857,4 +857,12 @@ test('pre-Break P.Exp gain is unchanged (score at or below Infinity)', () => {
     s.scoreLog = sc;
     assert.equal(E.pendingPrestige(s).pExp, 1 + (Math.max(0, sc - 5) / E.TUNE.pExpDiv));
   }
+});
+
+test('tuned coefficients appear in upgrade and challenge text', () => {
+  const T = E.TUNE;
+  assert.ok(E.upgById('5;2').desc.includes(String(T.u52K)));
+  assert.ok(E.upgById('6;2').desc.includes(String(T.u62K)));
+  assert.ok(E.CHALLENGES[3].handicap.includes(String(T.ic4Pow)));
+  assert.ok(E.CHALLENGES[8].handicap.includes(String(T.ic9Circles)));
 });

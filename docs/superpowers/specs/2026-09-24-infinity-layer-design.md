@@ -185,10 +185,10 @@ promoXp = floor( ((m / promoMin)^0.75)^gainPow )
 | **3;2** | **Auto Work** (added, D3) | 1 | unlocks Auto-Promote | prev | A |
 | 4;1 | Even Faster Laps | 3 | lap speed ×1.2 [W] | prev | A |
 | 5;1 | Long Term Prestiging | 3 | P.Mult gain ×`min(10, 1+√(t/600))` [R] | 4;1 | A |
-| 5;2 | Solid Exponent | 3 | P.Exp gain ×`(1 + 0.1·log2(1+∞))` [R] | 4;1 | A |
+| 5;2 | Solid Exponent | 3 | P.Exp gain ×`(1 + u52K·log2(1+∞))` [R], `u52K` = 0.01 (§11) | 4;1 | A |
 | 5;3 | Auto Prestige | 3 | unlocks Auto-Prestige [W] | 4;1 | A |
 | 6;1 | Mighty Ascension | 3 | ascension power base +2 [W] | 5;1 or 5;2 | A |
-| 6;2 | Ascend to Ascend | 3 | asc power ×`f62 = 1 + 0.25·log10(1+∞)` [R] | 5;2 or 5;3 | A |
+| 6;2 | Ascend to Ascend | 3 | asc power ×`f62 = 1 + u62K·log10(1+∞)` [R], `u62K` = 0.01 (§11) | 5;2 or 5;3 | A |
 | 7;1 | Challenges! | 5 | unlocks Infinity Challenges [W] | prev | B |
 | 8;1 | Generator and Time | 16 | G1 ×`(1 + t/60)^0.5` [R] | 7;1 | B |
 | 8;2 | Generator and Power | 32 | G1 ×`(1 + log10(1+GP))` [R] | 7;1 | B |
@@ -250,7 +250,7 @@ M_k (log)  = log10(2)·(b_k − 1)                          // ×2 per purchase 
            + log10(max(1,∞)) if 1;1 applies to Gk        // G1; SD upg 1 extends it to G(1+sdU[0])
            + log10(2)·[IC6 done]                          // "all generators twice as strong"
            + 20;1 factor
-           + log10(TUNE.genRate)                          // [R] default 1
+           + log10(TUNE.genRate)                          // [R] default 0.0025 (§11)
 softcap:   if M_k > 1000 then M_k = 1000 · (M_k/1000)^0.5  // "Generator Mult softcapped at 1e1,000" [W], [R] shape
 
 gpLog  = logAdd(gpLog, a1Log + M_1 + starGpLog + log10(dt))
@@ -365,21 +365,21 @@ starGpLog = exp · max(0, sdLog)                          // GP gain ×SD^exp  [
 | 1 | Ionized Speed | P2 and P4 disabled (level treated as 0, cannot promote into them) | P2 and P4 variable parts ×`ic1Boost` (1.5) [R] |
 | 2 | Descent | asc power ÷4 | asc power ×1.2 |
 | 3 | The First Root | commonExp −0.4 | commonExp +0.03 |
-| 4 | Steep Climbs | prestige and promote gains ^0.4 (§3) | after every Infinity, all promotions start at level 1; IP ×2 (D7) |
+| 4 | Steep Climbs | prestige and promote gains ^`ic4Pow` = 0.32 (wiki 0.4; see Deviations) (§3) | after every Infinity, all promotions start at level 1; IP ×2 (D7) |
 | 5 | Fired From Work | all promotion variable parts ×`ic5Nerf` (0.25) [R] | ×`ic5Reward` (1.1) [R] |
 | 6 | The Drain | colour mult logs decay ×(1−0.01)^dt, floor ×1 [R] | all generators ×2 |
 | 7 | Quadratic Division | product of mults ÷ t² | product of mults × t^0.2 |
 | 8 | Noscensions | ascensions disabled | ascension power base +2 |
-| 9 | Isolationism | only Red–Green (4 circles) can unlock | ∞ gain ×2; unlocks Break Infinity |
+| 9 | Isolationism | only the first `ic9Circles` = 3 colours (Red–Yellow) can unlock (wiki 4; see Deviations) | ∞ gain ×2; unlocks Break Infinity |
 
 **Break Infinity:**
 - `canBreak(s)` is `ic.done` all true. `setBroken(s, bool)` flips the toggle. The Break card at the top of the ICs sub-tab offers "Break" and "Fix".
 - Fixing while `scoreLog > INFINITY_LOG` clamps the score, which triggers the automatic Infinity at the next tick.
 - IP bonus while broken [W]:
   ```
-  breakBonusLog(s) = broken && !ic.active ? max(0, floor((scoreLog − 2772) / 308)) : 0
+  breakBonusLog(s) = broken && !ic.active ? max(0, floor((scoreLog − breakStartLog) / breakStepLog)) : 0
   ```
-  That gives ×10 at e3,080, ×100 at e3,388, and so on.
+  With the tuned `breakStartLog` = 4100 and `breakStepLog` = 74 (§11), that gives ×10 at e4,174, ×100 at e4,248, and so on. The wiki values are 2772 and 308, giving ×10 at e3,080 and ×100 at e3,388 (see Deviations).
 - The UI shows an "IP bar": progress from the last ×10 threshold to the next one.
 
 ---
@@ -396,7 +396,7 @@ starGpLog = exp · max(0, sdLog)                          // GP gain ×SD^exp  [
   anyAutoOn(s) ? clamp(inf.tRun / TUNE.dtRunDiv, opts.dtMin ?? TUNE.dtMin, opts.dtMax ?? TUNE.dtMax) : TUNE.dtFixed
   ```
   Dynamics are fast right after a reset, so steps start fine and coarsen as the run matures. Without automation the step is 1 s, as shipped.
-- **UI offline and hidden-tab catch-up** call `simulate(s, sec, { dtMin: 0.5 })`. In the worst case that is 57,600 steps for 8 h, which must run in under 3 s (checked by a test).
+- **UI offline and hidden-tab catch-up** call `simulate` at the default step (`dtMin` 0.1) in chunks spread across animation frames behind a "Catching up… N%" overlay (Task 10 ruling; chunked ≡ one call). One 8 h call is only sanity-bounded (≤ 6 s in Node).
 - The offline modal adds these lines: "+X IP", "+N Infinities" and "Challenge n completed".
 
 ### 9.2 State v2 (additions; v1 fields unchanged except `ip`)
@@ -598,8 +598,7 @@ These use the concurrent help system: a `data-tip` key with optional `data-tip-i
 | `ic4Pow` | 0.32 (wiki 0.4; see Deviations) | [W] IC4 gain power (last-resort lever) |
 | `ic9Circles` | 3 (wiki 4; see Deviations) | [W] IC9 circle limit (last-resort lever) |
 | `breakStartLog`, `breakStepLog` | 4100, 74 (wiki 2772, 308; see Deviations) | [W] IP bar: ×10 per `breakStepLog` of score past `breakStartLog` (wiki: ×10 at e3,080, then every e308) |
-| `starStep` | `[[0,3],[18,7],[30,'grow']]` | [W]/[R] star cost steps: 3 below index 18, 7 below 30, then `7 + starStepGrow·(j−29)` |
-| `starStepGrow` | 1 | [R] star cost growth past index 30 (TUNE key added in Task 14, value unchanged) |
+| `starStep` | `[[0,3],[18,7],[30,'grow']]` | [W]/[R] star cost steps: 3 below index 18, 7 below 30, then `7 + (j−29)` |
 | `dtRunDiv`, `dtMin`, `dtMax`, `dtFixed` | 50, 0.1, 2, 1 | adaptive step (§9.1) |
 
 ---
@@ -628,11 +627,12 @@ Game time equals wall time for a player on this schedule. "t∞" is game time si
 | Run length at Infinity 11 | 25–35 min | ≥ 15 min |
 | All 4 automations owned (9 IP) | by Infinity 8 | — |
 | 7;1 bought (Challenges) | t∞ 10–16 h | ≥ 8 h |
-| IC1, 2, 3 (each attempt, start → completion) | 30–90 min | ≥ 15 min |
+| IC1, 2 (each attempt, start → completion) | 20–90 min (ruling, Task 14) | ≥ 15 min |
+| IC3 (each attempt) | 30–90 min | ≥ 15 min |
 | IC5, 6, 7, 8 (each attempt) | informational: expected minutes | no floor — faithful to the wiki handicaps (controller ruling, Task 14) |
 | IC4 and IC9 (each attempt) | 3–6 h | ≥ 2 h |
-| All 9 ICs → Break unlocked | t∞ 2–4 days (48–96 h) | ≥ 40 h |
-| Col 17 (1e6 IP) | Break + 1–2 days | ≥ Break + 16 h |
+| All 9 ICs → Break unlocked | t∞ 42–96 h (ruling, Task 14; quantised by the 3 h check-ins) | ≥ 40 h |
+| Col 17 (1e6 IP) | informational: Break + 0–24 h (ruling, Task 14), measured in t∞ from the Break unlock | — |
 | First Star (2e33 IP) | t∞ 5–8 days | ≥ 4 days |
 | **1.79e308 IP finale** | **t∞ 7–14 days (168–336 h)** | ≥ 6 days |
 
@@ -655,7 +655,7 @@ Wiki [W] numbers change only as a last resort. Any such change is recorded in a 
 
 Changed: `genRate` 1 → 0.0025, `u52K` 0.1 → 0.01, `u62K` 0.25 → 0.01, `passiveInfK` 2 → 0.2, and the wiki values `ic4Pow` 0.4 → 0.32, `ic9Circles` 4 → 3 (new TUNE key), `breakStartLog`/`breakStepLog` 2772/308 → 4100/74 (see Deviations). Engine ruling: the P.Exp prestige gain reads `min(scoreLog, INFINITY_LOG)` (§3), because Revolution-stage formulas are defined up to Infinity. Without it a broken run diverges within seconds. The change is bit-identical before Break.
 
-Full `MODE=layer DAYS=16 CHECK=1` run. The stepped and `OFFLINE=1` runs agree within ±15% on every row, and the Phase B `NOSKIP=1` replay agrees on Break. Wall time is about 4 min.
+Full `MODE=layer DAYS=16 CHECK=1` run. The stepped and `OFFLINE=1` runs agree within ±15% on every row, and the Phase B `NOSKIP=1` replay agrees on Break. CHECK=1 exits 0 with a total wall time of 4 min 21 s.
 
 | Milestone | Result (t∞ unless noted) | Target | Status |
 |---|---|---|---|
@@ -665,21 +665,27 @@ Full `MODE=layer DAYS=16 CHECK=1` run. The stepped and `OFFLINE=1` runs agree wi
 | Run at Infinity 11 | 26m | 25–35 min | PASS |
 | All 4 automations | Infinity 7 | by Infinity 8 | PASS |
 | 7;1 bought | 11h18m | 10–16 h | PASS |
-| IC1 / IC2 | 25m / 25m | 30–90 min (floor 15) | below target, above floor |
+| IC1 / IC2 | 25m / 25m | 20–90 min | PASS |
 | IC3 | 37m | 30–90 min | PASS |
 | IC4 | 3h38m | 3–6 h | PASS |
 | IC5 / IC6 / IC7 / IC8 | 1m33s / 29s / 18s / 11m | informational | INFO (ruling) |
 | IC9 | 3h44m | 3–6 h | PASS |
-| Break unlocked | 45h02m (day 1.88) | 48–96 h (floor 40) | below target, above floor |
-| Col 17 (1e6 IP) | 2d07h (Break + about 4 h after the Break check-in) | Break + 1–2 d (floor + 16 h) | FAIL |
+| Break unlocked | 45h02m (day 1.88) | 42–96 h | PASS |
+| Col 17 (1e6 IP) | 2d07h11m (Break unlock + 10h09m) | informational, Break + 0–24 h | INFO |
 | First Star | 5d20h | 5–8 d | PASS |
 | Finale | 11d15h | 7–14 d | PASS |
 
 **IC5–IC8 (ruling):** these are faithful to the wiki handicaps. They start when normal runs last 11–30 s and are expected to take minutes, so they are reported without a target.
 
-**Why Col 17 misses:** IP is already about e5.2 when Infinity is broken. The IP comes from Phase B's [W] multipliers (×(1+ICs), ×2 at the 5th Infinity, ×2 for IC4), from runs lasting seconds, and from buying columns 15–16 before Break. At about e2.5 IP per few-second run, 1e6 arrives within hours whatever the break bonus. The listed levers (`icRefSec`, `ctfMax`, `u161Pow`) act on factors of ×1–×6 and cannot hold IP below 1e6 for 16 h.
+**Why Col 17 comes early (now informational):** IP is already about e5.2 when Infinity is broken. The IP comes from Phase B's [W] multipliers (×(1+ICs), ×2 at the 5th Infinity, ×2 for IC4), from runs lasting seconds, and from buying columns 15–16 before Break. At about e2.5 IP per few-second run, 1e6 arrives within hours whatever the break bonus. The listed levers (`icRefSec`, `ctfMax`, `u161Pow`) act on factors of ×1–×6 and cannot hold IP below 1e6 for 16 h.
 
-**Why Break is at 45 h:** the time is set by the one-IC-per-check-in cadence and the night gaps. IC9 completes during the evening of day 1.
+**Break at 45 h:** the time is set by the one-IC-per-check-in cadence and the night gaps. IC9 completes during the evening of day 1.
+
+**Notes:**
+- 6;2 at `u62K` = 0.01 is only about ×1.02 at ∞ = 100, so it is nearly cosmetic. It stays in the tree as a cheap Phase A node. Its strength was lowered because larger values let the IC3 and IC4 attempts complete in minutes.
+- **Regression guard:** any change to Phase A or Phase B (tree, generators, IC rewards, Revolution stage) must re-run the Phase C calibration (`FROM=phaseC-start`, then a full `CHECK=1`). Two values are cliff-sensitive:
+  - `ic4Pow`: 0.32 takes 3h38m, and 0.30 never completes.
+  - `breakStartLog` sits just above the ~e4,000 score reached at Break. A shift of ±100 in that score moves First Star by about ±1 d.
 
 ### Deviations
 
@@ -706,7 +712,8 @@ Full `MODE=layer DAYS=16 CHECK=1` run. The stepped and `OFFLINE=1` runs agree wi
 
      An attempt still running after 8 h is abandoned with `exitChallenge` and retried 4 check-ins later. Every attempt is logged. After Break, each IC is re-run once per day, at the first check-in of the day, to lower its best time.
   4. **Break mode.** At the first check-in after Break, the bot breaks Infinity and turns on auto-infinity (15;1).
-     - At each later check-in it sets `minIpLog` to the IP gain the previous run reached at the moment its IP-per-minute peaked.
+     - At each later check-in it sets `minIpLog` to the IP gain at the moment a run's IP-per-minute peaks. A run cut at `minIpLog` cannot show what lies beyond it, so the bot looks ahead: it plays one fresh run on a cloned state (auto-Infinity off, up to 2 h, real state untouched) and takes the gain at the peak of `ipGain / max(1 min, t)`.
+     - **This probe is an oracle.** A real idle player reads the IP bar and guesses, so the sim's post-Break pace is an **upper bound** for idle players.
      - Before 15;1 is owned, it goes Infinite at check-ins only.
   5. **Stars.** At each check-in the bot buys Stardust upgrades while affordable, in the guide order 1, 3, 2, 4. Then it buys whichever of Star, Base and Exponent is cheapest.
 - **Step size:** the engine's `adaptiveDt` with `dtMin 0.1` and `dtMax 2`.
@@ -724,7 +731,7 @@ Full `MODE=layer DAYS=16 CHECK=1` run. The stepped and `OFFLINE=1` runs agree wi
   - The macro-step count and wall time per phase.
   - `VERBOSE=1` adds a line per Infinity.
 - **`CHECK=1`** exits non-zero on any FAIL or when the wall budget is exceeded.
-- **`OFFLINE=1`** replays with each night gap as a single `simulate(s, 8h, { dtMin: 0.5 })` call, the way the UI does it. Milestones must land within ±15% of the stepped run.
+- **`OFFLINE=1`** replays each night gap through `simulate` at the default step, in consecutive 300 s chunks, the way the UI's chunked catch-up does it. Milestones must land within ±15% of the stepped run.
 
 ---
 
@@ -739,14 +746,14 @@ Full `MODE=layer DAYS=16 CHECK=1` run. The stepped and `OFFLINE=1` runs agree wi
    - The 1st Infinity gives 1 IP; the 5th gives 2.
    - The IC4 ×2 applies from the next Infinity on.
    - The IC count adds +1 each.
-   - Break boundaries: e3,079 gives ×1, e3,080 gives ×10, e3,388 gives ×100.
+   - Break boundaries at `breakStartLog + k·breakStepLog` (tuned values from TUNE). The wiki values 2772/308 are also checked: e3,079 gives ×1, e3,080 gives ×10, e3,388 gives ×100.
 4. **Upgrades.** Prerequisites (including the special cases 6;1 and 6;2, and column 11 depending on column 9); cost deduction; each effect changes the targeted quantity by the stated factor.
 5. **Generators.** G1 alone gives GP = `m·t` (within 1e-6 relative). A 2-tier closed form holds for small `dt`. The ×2-per-purchase rule holds. The softcap is continuous at 1e1000.
-6. **Challenges.** Each handicap is checked in isolation (e.g. IC8: `canAscend` is false; IC9: circle 4 never unlocks). Completion sets done/best and pays IP. Exit resets without IP. Challenges ignore the Break toggle.
+6. **Challenges.** Each handicap is checked in isolation (e.g. IC8: `canAscend` is false; IC9: circle `ic9Circles`+1 never unlocks). Completion sets done/best and pays IP. Exit resets without IP. Challenges ignore the Break toggle.
 7. **Automation.** `autoStep` decisions on constructed states: autobuy picks the cheapest level; prestige fires on the ratio and exponent thresholds and on a stall; promote follows the order and `xFactor` and skips disabled promotions; auto-infinity respects its minimums.
 8. **Offline.**
    - `simulate(s, 600)` with automation versus 6,000 active 0.1 s ticks: prestige count within ±1, and score within 1.5 decades.
-   - `simulate(s, 8h, { dtMin: 0.5 })` on an automated late-game fixture completes in under 3 s.
+   - `simulate(s, 8h)` at the default step on an automated fixture completes in ≤ 6 s (Node), and 96 × 300 s chunks equal one 8 h call.
 9. **Stars.** SD rate, GP multiplier, the star cost step sequence (e33, e36 … e87, e94 …), and the Stardust upgrade caps.
 10. **Tooltips.** Every `data-tip` key used in `ui.js` exists in `TIPS`, and every function entry returns a non-empty string on a fresh state and on a late-game fixture.
 
