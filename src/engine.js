@@ -154,8 +154,11 @@ const Engine = (() => {
 
   // --- formulas ---
 
-  function promoEffects(s) {
-    const m = mods(s);
+  // `m` (mods(s)) may be passed in precomputed to avoid recomputing it
+  // (mods() aggregates upgrade/challenge/star contributors and isn't free);
+  // callers that don't have it handy can omit it and it's computed here.
+  function promoEffects(s, m) {
+    m = m || mods(s);
     const L = s.promo.map((x, k) => (m.disabledPromo.includes(k) ? 0 : x));
     const p4 = 1 + 0.05 * Math.pow(L[3], 0.48) * m.v[3];
     const p1 = p4 * (Math.floor(Math.pow(L[0], 1.5)) * m.v[0] + 1);
@@ -168,16 +171,18 @@ const Engine = (() => {
     return 100 + 10 * circle.ascensions;
   }
 
-  function lapsPerSec(s, i) {
+  function lapsPerSec(s, i, m) {
     const c = s.circles[i];
     if (!c.unlocked) return 0;
+    m = m || mods(s);
     const def = CIRCLES[i];
-    const p = promoEffects(s);
-    return c.level * def.baseSpeed * p.p2 * mods(s).lapMult;
+    const p = promoEffects(s, m);
+    return c.level * def.baseSpeed * p.p2 * m.lapMult;
   }
 
-  function multGainPerLapLog(s, i) {
-    return s.circles[i].multGainLog + Math.log10(promoEffects(s).p1) + mods(s).gainLog;
+  function multGainPerLapLog(s, i, m) {
+    m = m || mods(s);
+    return s.circles[i].multGainLog + Math.log10(promoEffects(s, m).p1) + m.gainLog;
   }
 
   function costLog(s, i) {
@@ -220,8 +225,8 @@ const Engine = (() => {
     return count;
   }
 
-  function perRevLog(s) {
-    const m = mods(s);
+  function perRevLog(s, m) {
+    m = m || mods(s);
     let sum = 0;
     for (const c of s.circles) {
       if (c.unlocked) sum += c.multLog;
@@ -243,7 +248,7 @@ const Engine = (() => {
     s.inf.tRun += dt;
     if (hooks.preTick) hooks.preTick(s, dt, m);
 
-    const p = promoEffects(s);
+    const p = promoEffects(s, m);
     const laps = new Array(s.circles.length).fill(0);
     let N = 0;
     for (let i = 0; i < s.circles.length; i++) {
@@ -269,7 +274,7 @@ const Engine = (() => {
     }
 
     if (N > 0) {
-      s.scoreLog = logAdd(s.scoreLog, Math.log10(N) + perRevLog(s));
+      s.scoreLog = logAdd(s.scoreLog, Math.log10(N) + perRevLog(s, m));
     }
     if (isFixed(s) && s.scoreLog > INFINITY_LOG) s.scoreLog = INFINITY_LOG;
 
@@ -282,15 +287,36 @@ const Engine = (() => {
     return { laps };
   }
 
-  function simulate(s, seconds) {
-    const scoreLogBefore = s.scoreLog;
+  function simulate(s, seconds, opts) {
+    opts = opts || {};
+    const before = {
+      score: s.scoreLog,
+      ip: s.inf.ipLog,
+      inf: s.infinities,
+      done: s.inf.ic.done.slice(),
+    };
     let remaining = seconds;
-    while (remaining > 0) {
-      const dt = Math.min(1, remaining);
+    while (remaining > 1e-9) {
+      const step = hooks.stepDt ? hooks.stepDt(s, opts) : (TUNE.dtFixed ?? 1);
+      const dt = Math.min(step, remaining);
       tick(s, dt);
       remaining -= dt;
     }
-    return { scoreLogBefore, scoreLogAfter: s.scoreLog };
+    const ipAfter = s.inf.ipLog;
+    const ipGainedLog = ipAfter > before.ip
+      ? (before.ip === -Infinity ? ipAfter : logSub(ipAfter, before.ip))
+      : -Infinity;
+    const icCompleted = [];
+    for (let i = 0; i < s.inf.ic.done.length; i++) {
+      if (!before.done[i] && s.inf.ic.done[i]) icCompleted.push(i + 1);
+    }
+    return {
+      scoreLogBefore: before.score,
+      scoreLogAfter: s.scoreLog,
+      ipGainedLog,
+      infinitiesGained: s.infinities - before.inf,
+      icCompleted,
+    };
   }
 
   // --- reset helper ---

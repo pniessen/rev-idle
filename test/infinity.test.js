@@ -611,3 +611,32 @@ test('Infinity resets Stardust but keeps stars and upgrades', () => {
   E.goInfinite(s);
   assert.deepEqual(s.inf.stars, { n: 2, nb: 1, ne: 1, sdLog: -Infinity, sdU: [1, 2, 3, 4] });
 });
+
+test('adaptiveDt: fixed 1 s without automation, run-scaled with automation', () => {
+  assert.equal(E.adaptiveDt(E.newState()), 1);
+  const a = autoState('1;1'); a.inf.tRun = 0; assert.equal(E.adaptiveDt(a), 0.1);
+  a.inf.tRun = 50; assert.equal(E.adaptiveDt(a), 1); a.inf.tRun = 1e4; assert.equal(E.adaptiveDt(a), 2);
+  a.inf.tRun = 0; assert.equal(E.adaptiveDt(a, { dtMin: 0.5 }), 0.5);
+});
+
+test('simulate reports IP, Infinities and completed challenges', () => {
+  const s = icReady(1); E.startChallenge(s, 1); s.scoreLog = E.INFINITY_LOG;
+  const r = E.simulate(s, 1);
+  assert.equal(r.infinitiesGained, 1); close(r.ipGainedLog, Math.log10(2)); assert.deepEqual(r.icCompleted, [1]);
+  const q = E.simulate(E.newState(), 5); assert.equal(q.infinitiesGained, 0); assert.equal(q.ipGainedLog, -Infinity); assert.deepEqual(q.icCompleted, []);
+});
+
+test('offline automation tracks active play (10 min)', () => {
+  const mk = () => { const s = autoState('1;1', '2;2', '3;1', '3;2', '4;1', '5;3'); s.infinities = 8; return s; };
+  const a = mk(), b = mk();
+  E.simulate(a, 600, { dtMin: 0.5 });
+  for (let i = 0; i < 6000; i++) E.tick(b, 0.1);
+  assert.ok(Math.abs(a.stats.prestiges - b.stats.prestiges) <= 2, `prestiges ${a.stats.prestiges} vs ${b.stats.prestiges}`);
+  assert.ok(Math.abs(a.stats.bestScoreLog - b.stats.bestScoreLog) <= 1, `best ${a.stats.bestScoreLog} vs ${b.stats.bestScoreLog}`);
+});
+
+test('8 h offline with automation stays within the 3 s budget', () => {
+  const s = autoState('1;1', '2;2', '3;1', '3;2', '4;1', '5;3'); s.infinities = 8;
+  const t0 = Date.now(); E.simulate(s, 8 * 3600, { dtMin: 0.5 }); const ms = Date.now() - t0;
+  assert.ok(ms < 3000, `took ${ms} ms`);
+});
