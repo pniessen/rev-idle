@@ -75,6 +75,16 @@ button, input, textarea {
   border-bottom: 1px solid var(--line);
   background: var(--panel);
   min-height: 20px;
+  /* A grid item's automatic min-width defaults to its min-content size
+     (here: every chip laid out with no wrap), which — with 6+ rings
+     unlocked — can exceed the viewport and widen the whole 1fr column,
+     clipping content elsewhere (panel Buy buttons at 375px). min-width:0
+     lets .multbar-chips's own overflow-x:auto handle it instead. */
+  min-width: 0;
+}
+
+#stage, #panel {
+  min-width: 0;
 }
 
 .multbar-chips {
@@ -884,9 +894,9 @@ textarea.save-area {
 
 .guide-card-collapse {
   flex: none;
-  width: 24px;
-  height: 24px;
-  min-height: 24px;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -911,7 +921,11 @@ textarea.save-area {
   font-size: 12px;
 }
 
-.guide-card-body { margin-top: 8px; }
+.guide-card-body {
+  margin-top: 8px;
+  max-height: 28vh;
+  overflow-y: auto;
+}
 
 .guide-card-progress-text {
   font-family: var(--font-mono);
@@ -935,9 +949,16 @@ textarea.save-area {
 .guide-card .row { margin-top: 8px; }
 .guide-card .btn { min-height: 40px; padding: 8px 12px; font-size: 12px; }
 .guide-card .guide-journey { margin-top: 10px; }
+.guide-card-collapsed-showme { flex: none; white-space: nowrap; }
+.guide-card.collapsed .guide-card-head { min-height: 40px; }
 
 @media (max-width: 820px) {
-  .guide-card { width: 100%; margin: 10px 16px; }
+  .guide-card {
+    width: auto;
+    max-width: calc(100vw - 32px);
+    margin: 10px 0 0;
+  }
+  .guide-card-body { max-height: 22vh; }
 }
 
 /* ---------- guide: intro / full guide panel ---------- */
@@ -960,9 +981,9 @@ textarea.save-area {
 
 .guide-panel-close {
   flex: none;
-  width: 32px;
-  height: 32px;
-  min-height: 32px;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
   padding: 0;
   border-radius: 8px;
   font-size: 16px;

@@ -28,7 +28,11 @@
 
   // ---------- persisted store ----------
 
-  var store = { done: {}, collapsed: false, enabled: true, cardsSeen: {} };
+  // `collapsed` is tri-state: null/undefined = no explicit choice yet (the
+  // card defaults to collapsed on narrow viewports, expanded on wide ones —
+  // see isCardCollapsed()); true/false = the user toggled it, which then
+  // wins on every viewport.
+  var store = { done: {}, collapsed: null, enabled: true, cardsSeen: {} };
 
   function loadStore() {
     try {
@@ -38,18 +42,28 @@
         if (obj && typeof obj === 'object') {
           return {
             done: obj.done && typeof obj.done === 'object' ? obj.done : {},
-            collapsed: !!obj.collapsed,
+            collapsed: obj.collapsed === undefined || obj.collapsed === null ? null : !!obj.collapsed,
             enabled: obj.enabled !== false,
             cardsSeen: obj.cardsSeen && typeof obj.cardsSeen === 'object' ? obj.cardsSeen : {},
           };
         }
       }
     } catch (e) { /* ignore: guidance state is best-effort */ }
-    return { done: {}, collapsed: false, enabled: true, cardsSeen: {} };
+    return { done: {}, collapsed: null, enabled: true, cardsSeen: {} };
   }
 
   function saveStore() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); } catch (e) { /* ignore */ }
+  }
+
+  // Effective collapsed state: an explicit user choice always wins; with no
+  // choice made yet, narrow viewports (<=820px, matching the panel's own
+  // breakpoint) default to collapsed so the card never covers the rings.
+  function isCardCollapsed() {
+    if (store.collapsed === null || store.collapsed === undefined) {
+      try { return window.innerWidth <= 820; } catch (e) { return false; }
+    }
+    return !!store.collapsed;
   }
 
   // ---------- small helpers ----------
@@ -67,6 +81,60 @@
       return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     } catch (e) {
       return false;
+    }
+  }
+
+  // ---------- focus management (modals + the coach popover) ----------
+
+  function focusableIn(container) {
+    return Array.prototype.filter.call(
+      container.querySelectorAll('button, [href], input, select, textarea, [tabindex]'),
+      function (n) { return !n.disabled && n.tabIndex !== -1 && n.offsetParent !== null; }
+    );
+  }
+
+  // Moves focus into `container` (first focusable), traps Tab/Shift+Tab
+  // inside it, and returns a release() that restores the focus the page had
+  // before the container opened. Callers keep the release function and call
+  // it exactly once, when the container closes.
+  function trapFocus(container) {
+    var previouslyFocused = document.activeElement;
+    var list = focusableIn(container);
+    if (list.length) list[0].focus();
+    function onKeydown(e) {
+      if (e.key !== 'Tab') return;
+      var f = focusableIn(container);
+      if (!f.length) return;
+      var first = f[0];
+      var last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    container.addEventListener('keydown', onKeydown);
+    return function release() {
+      container.removeEventListener('keydown', onKeydown);
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function' && previouslyFocused.isConnected) {
+        previouslyFocused.focus();
+      }
+    };
+  }
+
+  // The one release() for whichever Guide-owned hooks.showModal panel is
+  // currently open (intro / full guide / unlock card — never more than one
+  // at a time, since hooks.isModalOpen() gates opening a second one).
+  var releaseModalFocus = null;
+
+  function closeGuideModal() {
+    hooks.hideModal();
+    if (releaseModalFocus) {
+      var r = releaseModalFocus;
+      releaseModalFocus = null;
+      r();
     }
   }
 
@@ -157,21 +225,22 @@
     var card = ensureCard();
     card.innerHTML = '';
     card.hidden = false;
-    card.classList.toggle('collapsed', !!store.collapsed);
+    var collapsed = isCardCollapsed();
+    card.classList.toggle('collapsed', collapsed);
     var content = GuideContent.goals[goal.id];
     var p = goal.progress(state);
     var pct = progressPct(p);
 
     var chevron = el('button', {
       class: 'guide-card-collapse',
-      'aria-label': store.collapsed ? 'Expand goal card' : 'Collapse goal card',
-      'aria-expanded': String(!store.collapsed),
+      'aria-label': collapsed ? 'Expand goal card' : 'Collapse goal card',
+      'aria-expanded': String(!collapsed),
       onclick: function () {
-        store.collapsed = !store.collapsed;
+        store.collapsed = !isCardCollapsed();
         saveStore();
         buildCard(hooks.getState(), goal);
       },
-    }, [store.collapsed ? '▸' : '▾']);
+    }, [collapsed ? '▸' : '▾']);
 
     var head = el('div', { class: 'guide-card-head' }, [
       chevron,
@@ -180,7 +249,15 @@
     ]);
     card.appendChild(head);
 
-    if (store.collapsed) return;
+    if (collapsed) {
+      // Collapsed still gets a one-tap "Show me" (spec: "collapsed = one
+      // line with title + %"), kept minimal — no full action row.
+      head.appendChild(el('button', {
+        class: 'btn guide-card-collapsed-showme',
+        onclick: function (e) { e.stopPropagation(); showMe(goal); },
+      }, ['Show me']));
+      return;
+    }
 
     var body = el('div', { class: 'guide-card-body' });
     if (p) {
@@ -190,13 +267,23 @@
       body.appendChild(el('div', { class: 'guide-card-progress-text' }, [progressText(p)]));
     }
     body.appendChild(el('p', { class: 'help guide-card-why' }, [fill(content.why, state)]));
-    body.appendChild(el('div', { class: 'row' }, [
+    var rowKids = [
       el('button', { class: 'btn', onclick: function () { showMe(goal); } }, ['Show me']),
       el('button', {
         class: 'btn',
         onclick: function () { openGuide(content.section); },
       }, ['Learn more']),
-    ]));
+    ];
+    if (goal.ack) {
+      // ack goals (readMult, buyModes) only complete through the coach
+      // popover's "Next"; players who skipped the tutorial, or an existing
+      // save that's already past them, need another way to clear them.
+      rowKids.push(el('button', {
+        class: 'btn primary',
+        onclick: function () { ackGoal(goal.id); },
+      }, ['Got it']));
+    }
+    body.appendChild(el('div', { class: 'row' }, rowKids));
     body.appendChild(journeyStrip(state));
     card.appendChild(body);
   }
@@ -216,12 +303,13 @@
         card.appendChild(el('div', { class: 'guide-card-done' },
           ['All goals complete — you’ve reached the end of this version.']));
         cardGoalId = null;
-        cardCollapsed = store.collapsed;
+        cardCollapsed = isCardCollapsed();
       }
       return;
     }
 
-    if (goal.id === cardGoalId && store.collapsed === cardCollapsed) {
+    var collapsedNow = isCardCollapsed();
+    if (goal.id === cardGoalId && collapsedNow === cardCollapsed) {
       // Patch in place: progress bar/text only, to avoid rebuilding (and
       // losing focus on) the card every 100ms tick.
       var p = goal.progress(state);
@@ -239,13 +327,26 @@
 
     buildCard(state, goal);
     cardGoalId = goal.id;
-    cardCollapsed = store.collapsed;
+    cardCollapsed = collapsedNow;
   }
+
+  // A resize can cross the 820px breakpoint while the card has no explicit
+  // collapse choice yet (store.collapsed === null): force the next
+  // renderCard to re-evaluate rather than staying on a stale layout.
+  window.addEventListener('resize', function () {
+    if (store.collapsed === null || store.collapsed === undefined) cardGoalId = undefined;
+  });
 
   // ---------- "Show me" / highlight ----------
 
   var pulsedEls = [];
   var strongUntil = 0;
+  // While a "Show me" explicitly named a goal (e.g. an unlock card's own
+  // goal, which may differ from the actual current goal) and the strong
+  // window hasn't expired, that goal wins over GuideGoals.current — see
+  // showMe().
+  var forcedPulseGoal = null;
+  var forcedPulseUntil = 0;
 
   function clearPulse() {
     pulsedEls.forEach(function (n) {
@@ -257,9 +358,9 @@
   function updatePulse(state) {
     clearPulse();
     if (!isEnabled()) return;
-    var goal = GuideGoals.current(store.done);
-    if (!goal) return;
     var strong = Date.now() < strongUntil;
+    var goal = (forcedPulseGoal && Date.now() < forcedPulseUntil) ? forcedPulseGoal : GuideGoals.current(store.done);
+    if (!goal) return;
     var nodes = findTargetEls(goal);
     Array.prototype.forEach.call(nodes, function (n) {
       n.classList.add('guide-pulse');
@@ -274,6 +375,8 @@
       var nodes = findTargetEls(goal);
       if (!nodes.length) return; // fail gracefully: nothing to scroll to / pulse
       strongUntil = Date.now() + STRONG_PULSE_MS;
+      forcedPulseGoal = goal;
+      forcedPulseUntil = Date.now() + STRONG_PULSE_MS;
       if (typeof nodes[0].scrollIntoView === 'function') {
         nodes[0].scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
       }
@@ -322,6 +425,11 @@
     ]);
   }
 
+  function closeIntro() {
+    if (window.Help && typeof window.Help.markIntroSeen === 'function') window.Help.markIntroSeen();
+    closeGuideModal();
+  }
+
   function showIntro() {
     if (hooks.isModalOpen()) return;
     var state = hooks.getState();
@@ -338,21 +446,20 @@
           id: 'guide-intro-start',
           onclick: function () {
             tutorialActive = true;
-            hooks.hideModal();
+            closeIntro();
           },
         }, ['Start tutorial']),
         el('button', {
           class: 'btn',
           onclick: function () {
             tutorialActive = false;
-            hooks.hideModal();
+            closeIntro();
           },
         }, ['Skip']),
       ]),
     ]);
     hooks.showModal(panel);
-    var startBtn = panel.querySelector('#guide-intro-start');
-    if (startBtn) startBtn.focus();
+    releaseModalFocus = trapFocus(panel);
   }
 
   // ---------- full guide ----------
@@ -413,15 +520,16 @@
 
     body.appendChild(el('button', {
       class: 'btn',
-      onclick: function () { hooks.hideModal(); showIntro(); },
+      onclick: function () { closeGuideModal(); showIntro(); },
     }, ['Replay intro']));
 
-    var closeBtn = el('button', { class: 'btn guide-panel-close', 'aria-label': 'Close guide', onclick: hooks.hideModal }, ['×']);
+    var closeBtn = el('button', { class: 'btn guide-panel-close', 'aria-label': 'Close guide', onclick: closeGuideModal }, ['×']);
     var panel = el('div', { class: 'modal-panel guide-panel', role: 'dialog', 'aria-label': 'How to play' }, [
       el('div', { class: 'guide-panel-head' }, [el('h2', { class: 'modal-title' }, ['Guide']), closeBtn]),
       body,
     ]);
     hooks.showModal(panel);
+    releaseModalFocus = trapFocus(panel);
     if (sectionId) {
       setTimeout(function () { scrollToSection(sectionId); }, 0);
     }
@@ -457,7 +565,12 @@
       body.push(el('h3', { class: 'guide-section-title' }, [c.title]));
       body.push(el('p', { class: 'help' }, [fill(c.what, state)]));
       body.push(el('p', { class: 'help' }, [fill(c.why, state)]));
-      body.push(el('p', { class: 'guide-card-todo' }, [fill(c.todo, state)]));
+      // A combined card can list several unlocks at once (e.g. after
+      // catch-up); once the player is already past a listed goal, its
+      // "what to do now" line is stale noise rather than guidance.
+      if (!store.done[c.goal]) {
+        body.push(el('p', { class: 'guide-card-todo' }, [fill(c.todo, state)]));
+      }
     });
 
     var goal = GuideGoals.GOALS.find(function (g) { return g.id === first.goal; });
@@ -465,11 +578,18 @@
       el('button', {
         class: 'btn',
         onclick: function () {
-          hooks.hideModal();
+          closeGuideModal();
           if (goal) showMe(goal);
         },
       }, ['Show me']),
-      el('button', { class: 'btn primary', onclick: hooks.hideModal }, ['Got it']),
+      el('button', {
+        class: 'btn',
+        onclick: function () {
+          closeGuideModal();
+          openGuide(first.section);
+        },
+      }, ['Learn more']),
+      el('button', { class: 'btn primary', onclick: closeGuideModal }, ['Got it']),
     ];
 
     var panel = el('div', { class: 'modal-panel guide-unlock-card' },
@@ -477,6 +597,7 @@
         .concat(items.length > 1 ? body : body.slice(1))
         .concat([el('div', { class: 'row' }, actions)]));
     hooks.showModal(panel);
+    releaseModalFocus = trapFocus(panel);
   }
 
   function processCardQueue(state) {
@@ -493,11 +614,37 @@
   var tutorialActive = false;
   var spotlightEl = null;
   var spotlightGoalId = null;
+  // Escape dismisses the current step's spotlight without completing it
+  // (spec §3); dismissedStepId keeps runCoach from immediately rebuilding
+  // it on the next tick. Cleared as soon as the current goal moves on.
+  var dismissedStepId = null;
+  var lastCoachGoalId = null;
+
+  // Set while "Restart tutorial" is replaying the coach steps for a player
+  // who has already completed some or all of them (spec: restarting must
+  // still walk through the steps, independent of store.done, and land back
+  // on whatever the real current goal is once the replay ends).
+  var replayGoals = null;
+  var replayIndex = 0;
+  var releaseSpotlightFocus = null;
 
   function hideSpotlight() {
     if (spotlightEl && spotlightEl.parentNode) spotlightEl.parentNode.removeChild(spotlightEl);
     spotlightEl = null;
     spotlightGoalId = null;
+    if (releaseSpotlightFocus) {
+      var r = releaseSpotlightFocus;
+      releaseSpotlightFocus = null;
+      r();
+    }
+  }
+
+  function currentCoachGoal() {
+    if (replayGoals) {
+      var id = replayGoals[replayIndex];
+      return GuideGoals.GOALS.find(function (g) { return g.id === id; }) || null;
+    }
+    return GuideGoals.current(store.done);
   }
 
   function positionSpotlight(target) {
@@ -530,7 +677,26 @@
     hideSpotlight();
   }
 
+  // Advances a replay to its next coach step (or ends the replay, landing
+  // back on the real current goal per store.done — replay never mutates
+  // store.done itself, so whatever that is is already correct).
+  function replayNext() {
+    hideSpotlight();
+    if (!replayGoals) return;
+    replayIndex++;
+    if (replayIndex >= replayGoals.length) {
+      replayGoals = null;
+      tutorialActive = false;
+    }
+  }
+
   function skipTutorial() {
+    if (replayGoals) {
+      replayGoals = null;
+      tutorialActive = false;
+      hideSpotlight();
+      return;
+    }
     var ids = coachGoalIds();
     var last = ids[ids.length - 1];
     store.done = GuideGoals.ack(last, store.done);
@@ -547,7 +713,15 @@
       el('div', { class: 'guide-spotlight-title' }, [fill(content.title, state)]),
       el('div', { class: 'guide-spotlight-text' }, [fill(content.coach, state)]),
     ];
-    if (goal.ack) {
+    if (replayGoals) {
+      // Replaying: walk every coach step for teaching purposes only, so
+      // even an action step advances on "Next" rather than waiting for
+      // done(state) — which, for an advanced player, may already be true
+      // or may never become true again (e.g. buyRed once bought).
+      popKids.push(el('div', { class: 'row' }, [
+        el('button', { class: 'btn primary', onclick: replayNext }, ['Next']),
+      ]));
+    } else if (goal.ack) {
       popKids.push(el('div', { class: 'row' }, [
         el('button', { class: 'btn primary', onclick: function () { ackGoal(goal.id); } }, ['Next']),
       ]));
@@ -559,12 +733,16 @@
       onclick: skipTutorial,
     }, ['Skip tutorial']));
 
-    var overlay = el('div', { class: 'guide-spotlight-overlay', 'aria-hidden': 'true' }, [
-      el('div', { class: 'guide-spotlight-hole' }),
-      el('div', { class: 'guide-spotlight-pop', role: 'dialog', 'aria-label': 'Tutorial step' }, popKids),
+    // aria-hidden lives on the dim/cutout layer only — the popover is the
+    // actual dialog and must stay reachable to assistive tech.
+    var pop = el('div', { class: 'guide-spotlight-pop', role: 'dialog', 'aria-label': 'Tutorial step' }, popKids);
+    var overlay = el('div', { class: 'guide-spotlight-overlay' }, [
+      el('div', { class: 'guide-spotlight-hole', 'aria-hidden': 'true' }),
+      pop,
     ]);
     document.body.appendChild(overlay);
     spotlightEl = overlay;
+    releaseSpotlightFocus = trapFocus(pop);
 
     navigateToTarget(goal, function () {
       var nodes = findTargetEls(goal);
@@ -576,9 +754,18 @@
   function runCoach(state) {
     if (!isEnabled() || !tutorialActive) { hideSpotlight(); return; }
     if (hooks.isModalOpen() || hooks.isCatchingUp()) { hideSpotlight(); return; }
-    var goal = GuideGoals.current(store.done);
-    if (!goal || !goal.coach) {
+    var goal = currentCoachGoal();
+    if (!goal || (!replayGoals && !goal.coach)) {
       tutorialActive = false;
+      replayGoals = null;
+      hideSpotlight();
+      return;
+    }
+    if (goal.id !== lastCoachGoalId) {
+      dismissedStepId = null;
+      lastCoachGoalId = goal.id;
+    }
+    if (dismissedStepId === goal.id) {
       hideSpotlight();
       return;
     }
@@ -608,8 +795,12 @@
 
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
-    if (spotlightGoalId) { hideSpotlight(); return; }
-    if (hooks.isModalOpen && hooks.isModalOpen() === 'guide') hooks.hideModal();
+    if (spotlightGoalId) {
+      dismissedStepId = spotlightGoalId;
+      hideSpotlight();
+      return;
+    }
+    if (hooks.isModalOpen && hooks.isModalOpen() === 'guide') closeGuideModal();
   });
 
   // ---------- settings toggle API ----------
@@ -627,17 +818,22 @@
       tutorialActive = false;
       cardQueue = [];
       if (cardEl) cardEl.hidden = true;
-      if (hooks.isModalOpen && hooks.isModalOpen() === 'guide') hooks.hideModal();
+      if (hooks.isModalOpen && hooks.isModalOpen() === 'guide') closeGuideModal();
     }
   }
 
+  // Restarting must still teach every coach step even when some (or all)
+  // are already done — sync would otherwise instantly re-mark them and
+  // make this a no-op — so it replays them independent of store.done and
+  // lands back on the real current goal once done (see replayNext).
   function restartTutorial() {
-    var ids = coachGoalIds();
-    ids.forEach(function (id) { delete store.done[id]; });
-    saveStore();
-    lastDoneCount = -1;
+    replayGoals = coachGoalIds();
+    replayIndex = 0;
     tutorialActive = true;
-    if (hooks.isModalOpen && hooks.isModalOpen() === 'guide') hooks.hideModal();
+    dismissedStepId = null;
+    lastCoachGoalId = null;
+    hideSpotlight();
+    if (hooks.isModalOpen && hooks.isModalOpen() === 'guide') closeGuideModal();
     hooks.setTab('circles');
   }
 
@@ -663,6 +859,24 @@
     saveStore();
   }
 
+  // Clears learned progress (done goals, seen unlock cards) without
+  // touching the enabled/collapsed preferences. Called on hard reset (the
+  // player's whole save is gone, so buyRed is the current goal again) and
+  // on Import (a loaded save may be less advanced than store.done already
+  // claims — sync is monotonic and never unmarks, so the done map has to
+  // be rebuilt from scratch against whatever was just imported).
+  function reset() {
+    store.done = {};
+    store.cardsSeen = {};
+    saveStore();
+    lastDoneCount = -1;
+    currentGoalId = null;
+    cardGoalId = undefined;
+    cardQueue = [];
+    hideSpotlight();
+    clearPulse();
+  }
+
   function tick(state) {
     if (!state) return;
     var completedId = currentGoalId;
@@ -686,6 +900,7 @@
     openGuide: openGuide,
     unlock: unlock,
     restartTutorial: restartTutorial,
+    reset: reset,
     isEnabled: isEnabled,
     setEnabled: setEnabled,
   };

@@ -74,7 +74,7 @@
       section: 'buying',
     },
     unlockGreen: {
-      title: 'Buy {UNLOCK_AT} Yellow levels to unlock Green',
+      title: 'Unlock Green (the 4th ring)',
       why: 'Each new ring adds a multiplier to every lap. More rings means much faster growth.',
       section: 'buying',
     },

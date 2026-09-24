@@ -706,6 +706,7 @@
     refresh: refresh,
     showAt: showAt,
     hide: hide,
+    markIntroSeen: function () { markSeen('introSeen'); },
     TIPS: TIPS,
   };
 })();

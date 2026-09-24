@@ -899,6 +899,10 @@
         var loaded = Engine.deserialize(importArea.value.trim());
         state = loaded;
         syncKnown();
+        // The imported save may be less advanced than the current goal
+        // progress claims (GuideGoals.sync is monotonic and never
+        // unmarks), so rebuild guidance progress from scratch against it.
+        if (window.Guide) window.Guide.reset();
         importErr.textContent = '';
         markDirty();
         toast('Save loaded');
@@ -918,6 +922,7 @@
       state = Engine.newState();
       syncKnown();
       try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
+      if (window.Guide) window.Guide.reset();
       markDirty();
       toast('Progress reset');
       location.hash = '#circles';
