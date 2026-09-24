@@ -36,9 +36,28 @@
     };
   }
 
-  function rgba(hex, a) {
+  // Colors are drawn from a small fixed palette (Engine.CIRCLES, ~10 entries).
+  // Parse each hex color exactly once and cache the result, keyed by the hex
+  // string itself, so no per-frame/per-segment parsing or string building is
+  // needed. Shared at module scope so multiple Renderer instances reuse it.
+  var glowStopCache = Object.create(null);
+
+  // Precomputed radial-gradient color-stop strings for a given hex color.
+  // Gradients need the alpha baked into each stop's color (ctx.globalAlpha
+  // applies to the whole fill, not per-stop), so this is the one place we
+  // still need rgba() strings — computed once per unique color, then cached.
+  function getGlowStops(hex) {
+    var cached = glowStopCache[hex];
+    if (cached) return cached;
     var c = hexToRgb(hex);
-    return 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',' + a + ')';
+    var head = 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',';
+    cached = {
+      s90: head + '0.9)',
+      s35: head + '0.35)',
+      s0: head + '0)'
+    };
+    glowStopCache[hex] = cached;
+    return cached;
   }
 
   function prefersReducedMotion() {
@@ -133,7 +152,8 @@
     function drawFastRing(cx, cy, r, color) {
       var pulse = reducedMotion ? 0 : Math.sin(time * 4) * 0.6 + 0.6; // 0..1.2
       ctx.save();
-      ctx.strokeStyle = rgba(color, 0.7);
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = color;
       ctx.lineWidth = 2.2 + pulse * 1.4;
       ctx.shadowColor = color;
       ctx.shadowBlur = 14 + pulse * 6;
@@ -146,7 +166,8 @@
     function drawTrackAndDot(cx, cy, r, color, progress, lps) {
       // Track
       ctx.save();
-      ctx.strokeStyle = rgba(color, 0.18);
+      ctx.globalAlpha = 0.18;
+      ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, TWO_PI);
@@ -155,20 +176,22 @@
 
       var angle = progress * TWO_PI - Math.PI / 2;
 
-      // Comet trail: arc behind the dot.
+      // Comet trail: arc behind the dot. Uses ctx.globalAlpha per segment
+      // with the raw hex strokeStyle so no per-segment color string is
+      // built or parsed.
       var trailFrac = Math.min(0.9, lps * 0.25);
       if (trailFrac > 0.001) {
         var trailLen = trailFrac * TWO_PI;
         ctx.save();
         ctx.lineCap = 'round';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
         for (var s = 0; s < TRAIL_SEGMENTS; s++) {
           var t0 = s / TRAIL_SEGMENTS;
           var t1 = (s + 1) / TRAIL_SEGMENTS;
           var a0 = angle - trailLen * t0;
           var a1 = angle - trailLen * t1;
-          var alpha = (1 - t1) * 0.5;
-          ctx.strokeStyle = rgba(color, alpha);
-          ctx.lineWidth = 2;
+          ctx.globalAlpha = (1 - t1) * 0.5;
           ctx.beginPath();
           ctx.arc(cx, cy, r, a0, a1, true);
           ctx.stroke();
@@ -210,9 +233,9 @@
         if (age >= PULSE_LIFE) continue;
         var frac = age / PULSE_LIFE;
         var radius = pulse.r + frac * 26;
-        var alpha = (1 - frac) * 0.55;
         ctx.save();
-        ctx.strokeStyle = rgba(pulse.color, alpha);
+        ctx.globalAlpha = (1 - frac) * 0.55;
+        ctx.strokeStyle = pulse.color;
         ctx.lineWidth = 2 * (1 - frac) + 0.5;
         ctx.beginPath();
         ctx.arc(cx, cy, radius, 0, TWO_PI);
@@ -226,10 +249,11 @@
 
     function drawCoreGlow(cx, cy, minWH, color) {
       var radius = Math.max(10, minWH * 0.07);
+      var stops = getGlowStops(color);
       var grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-      grad.addColorStop(0, rgba(color, 0.9));
-      grad.addColorStop(0.4, rgba(color, 0.35));
-      grad.addColorStop(1, rgba(color, 0));
+      grad.addColorStop(0, stops.s90);
+      grad.addColorStop(0.4, stops.s35);
+      grad.addColorStop(1, stops.s0);
       ctx.save();
       ctx.fillStyle = grad;
       ctx.beginPath();
