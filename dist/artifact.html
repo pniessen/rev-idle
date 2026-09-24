@@ -963,23 +963,78 @@ const Engine = (() => {
 
   // --- merge / migrate ---
 
+  // Fills missing keys from the defaults and coerces type-mismatched leaves
+  // back to them (hostile or corrupt imports): a number default needs a
+  // finite number (or -Infinity where the default is -Infinity, the log-zero),
+  // a null default (fastestInfinity, IC best times) needs null or a finite
+  // number >= 0, a boolean default a boolean. Default-empty arrays
+  // (stats.lastInfinities) keep only plain-object entries; default-empty
+  // objects (inf.upg) keep only `true` flags.
   function mergeDefaults(def, obj) {
     if (Array.isArray(def)) {
       if (!Array.isArray(obj)) return def;
-      if (def.length === 0) return obj.slice();
+      if (def.length === 0) return obj.filter((x) => x !== null && typeof x === 'object' && !Array.isArray(x));
       return def.map((d, i) => (i < obj.length ? mergeDefaults(d, obj[i]) : d));
     }
-    if (def !== null && typeof def === 'object') {
+    if (def === null) return typeof obj === 'number' && Number.isFinite(obj) && obj >= 0 ? obj : null;
+    if (typeof def === 'object') {
       if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) return def;
       const keys = Object.keys(def);
-      if (keys.length === 0) return Object.assign({}, obj);
+      if (keys.length === 0) {
+        const out = {};
+        for (const k of Object.keys(obj)) if (obj[k] === true && k !== '__proto__') out[k] = true;
+        return out;
+      }
       const out = {};
       for (const k of keys) {
         out[k] = k in obj ? mergeDefaults(def[k], obj[k]) : def[k];
       }
       return out;
     }
-    return obj === undefined ? def : obj;
+    if (typeof def === 'number') {
+      if (typeof obj !== 'number' || Number.isNaN(obj)) return def;
+      if (Number.isFinite(obj) || (obj === -Infinity && def === -Infinity)) return obj;
+      return def;
+    }
+    return typeof obj === typeof def ? obj : def;
+  }
+
+  const nonNegInt = (x, max) => Math.min(max, Math.max(0, Math.floor(x)));
+
+  // Clamps values the type check alone lets through but the formulas cannot
+  // take (spec §3 invariants): multipliers below 1, negative or fractional
+  // levels and counts, out-of-range indices. Caps on counts that drive
+  // O(n) loops (ascensions, stars) are far above anything reachable.
+  function sanitize(s) {
+    s.pMult = Math.max(1, s.pMult); s.pExp = Math.max(1, s.pExp);
+    s.promo = s.promo.map((x) => nonNegInt(x, 1e15));
+    s.infinities = Math.max(0, s.infinities);
+    for (const c of s.circles) {
+      c.ascensions = nonNegInt(c.ascensions, 1e5);
+      c.level = nonNegInt(c.level, levelCap(c)); c.bought = nonNegInt(c.bought, 1e15); c.laps = Math.max(0, c.laps);
+      if (!(c.progress >= 0 && c.progress < 1)) c.progress = 0;
+      c.multLog = Math.max(0, c.multLog);
+    }
+    if (!s.circles[0].unlocked) s.circles[0].unlocked = true;
+    const st = s.stats;
+    st.lastInfinities = st.lastInfinities
+      .filter((e) => typeof e.t === 'number' && Number.isFinite(e.t) && typeof e.ipGainLog === 'number' && Number.isFinite(e.ipGainLog))
+      .map((e) => ({ t: Math.max(0, e.t), ipGainLog: e.ipGainLog })).slice(-10);
+    for (const k of ['totalLaps', 'prestiges', 'promotions', 'playTime']) st[k] = Math.max(0, st[k]);
+    const f = s.inf;
+    f.t = Math.max(0, f.t); f.tRun = Math.max(0, f.tRun);
+    f.gens.forEach((g) => { g.b = nonNegInt(g.b, 1e15); });
+    f.ic.active = nonNegInt(f.ic.active, 9);
+    const st2 = f.stars;
+    st2.n = nonNegInt(st2.n, 1e4); st2.nb = nonNegInt(st2.nb, 1e6); st2.ne = nonNegInt(st2.ne, 1e6);
+    st2.sdU = st2.sdU.map((x) => nonNegInt(x, 1e15));
+    const a = f.auto;
+    const ord = a.promote.order;
+    if (ord.some((k) => !Number.isInteger(k) || k < 0 || k > 3)) a.promote.order = [0, 1, 2, 3];
+    a.promote.xFactor = Math.max(1, a.promote.xFactor); a.prestige.multX = Math.max(1, a.prestige.multX);
+    for (const o of [a.promote, a.prestige, a.infinity]) o.minTime = Math.max(0, o.minTime);
+    a.prestige.expGain = Math.max(0, a.prestige.expGain); a.stallSec = Math.max(0, a.stallSec);
+    return s;
   }
 
   function migrate(obj) {
@@ -990,7 +1045,7 @@ const Engine = (() => {
     if (obj.v === 1) {
       obj.inf = Object.assign({}, obj.inf, { ipLog: obj.ip > 0 ? Math.log10(obj.ip) : -Infinity });
     }
-    return Object.assign(mergeDefaults(newState(), obj), { v: 2 });
+    return sanitize(Object.assign(mergeDefaults(newState(), obj), { v: 2 }));
   }
 
   // --- formulas ---
@@ -1215,7 +1270,7 @@ const Engine = (() => {
   }
 
   function prestige(s) {
-    if (!canPrestige(s)) return false;
+    if (!canPrestige(s) || awaitingInfinity(s)) return false;
     const g = pendingPrestige(s);
     s.pMult = Math.max(s.pMult, g.pMult);
     s.pExp = Math.max(s.pExp, g.pExp);
@@ -1243,7 +1298,7 @@ const Engine = (() => {
   }
 
   function promote(s, k) {
-    if (!canPromote(s, k)) return false;
+    if (!canPromote(s, k) || awaitingInfinity(s)) return false;
     const xp = promoXp(s);
     s.promo[k] = xp;
     resetRun(s);
@@ -1260,6 +1315,17 @@ const Engine = (() => {
 
   function canInfinity(s) {
     return s.scoreLog >= INFINITY_LOG;
+  }
+
+  // Spec §2.1: at the fixed cap with the first Infinity (or "Confirm each
+  // Infinity") the run waits for the player's confirmation and the score
+  // stays capped — prestige/promote (manual or automatic) are refused so a
+  // click landing between the capping tick and the modal cannot reset the
+  // run under a pending confirmation. True from the capping tick onwards
+  // (postTick sets pendingConfirm at the end of that same tick).
+  function awaitingInfinity(s) {
+    if (!canInfinity(s)) return false; // a stale flag below the cap never blocks
+    return s.inf.pendingConfirm || (isFixed(s) && (s.infinities === 0 || !!s.inf.auto.confirmInfinity));
   }
 
   // --- serialize ---
@@ -1339,6 +1405,7 @@ const Engine = (() => {
     canPromote,
     promote,
     canInfinity,
+    awaitingInfinity,
     serialize,
     deserialize,
     promoEffects,
@@ -1834,6 +1901,10 @@ if (typeof module !== 'undefined' && module.exports) {
   });
 
   function postTick(s) {         // spec §2.1
+    // A confirmation can only be pending at the cap: anything that dropped the
+    // score below it (an old save, a reset that slipped in) clears it, so the
+    // UI never shows a modal whose "Go Infinite" cannot succeed.
+    if (s.inf.pendingConfirm && !E.canInfinity(s)) s.inf.pendingConfirm = false;
     if (!E.isFixed(s) || !E.canInfinity(s)) return;
     if (s.infinities === 0 || s.inf.auto.confirmInfinity) { s.inf.pendingConfirm = true; return; }
     goInfinite(s);
@@ -2056,6 +2127,10 @@ if (typeof module !== 'undefined' && module.exports) {
         rem = spend(rem, x);
         bought++;
       }
+      // Nothing affordable at this price (x0 passed but a non-numeric level
+      // budget, e.g. from a corrupt save, bought nothing): stop instead of
+      // spinning on an unchanged state.
+      if (bought === 0) break;
       c.level += bought;
       c.bought += bought;
       left -= bought;
@@ -2158,6 +2233,10 @@ if (typeof module !== 'undefined' && module.exports) {
     for (let iter = 0; iter < E.TUNE.autoStepMaxIter; iter++) {
       let did = false;
       const m = E.mods(s);
+      // Spec §2.1: while an Infinity awaits the player's confirmation the
+      // score stays capped, so nothing may spend or reset it (only a broken
+      // run's Auto-Infinity can still resolve it).
+      if (E.awaitingInfinity(s)) { if (autoInfinity(s, u)) { actions.push('infinity'); continue; } break; }
       if (autoAscend(s, u, m, cache)) { actions.push('ascend'); did = true; }
       if (autoBuy(s, u, m, cache)) { actions.push('buy'); did = true; }
       if (autoPromote(s, u, m)) { actions.push('promote'); did = true; continue; }
@@ -2798,8 +2877,10 @@ if (typeof module !== 'undefined' && module.exports) {
     breakToggle: function (s) {
       var T = Engine.TUNE;
       return 'Broken: score can pass ' + fmt(Engine.INFINITY_LOG) + ' and you choose when to go Infinite. Every e'
-        + T.breakStepLog + ' past e' + T.breakStartLog.toLocaleString('en-US') + ' multiplies IP ×10. Fixed: you go Infinite automatically at '
-        + fmt(Engine.INFINITY_LOG) + '.';
+        + T.breakStepLog + ' past e' + T.breakStartLog.toLocaleString('en-US') + ' multiplies IP ×10. Fixed: '
+        + (s.inf.auto.confirmInfinity
+          ? 'score stops at ' + fmt(Engine.INFINITY_LOG) + ' and you confirm each Infinity ("Confirm each Infinity" is on).'
+          : 'you go Infinite automatically at ' + fmt(Engine.INFINITY_LOG) + '.');
     },
     ipBar: function (s) {
       var T = Engine.TUNE;
@@ -3316,6 +3397,8 @@ if (typeof module !== 'undefined' && module.exports) {
   // ---------- header ----------
 
   function ipLineText(state) {
+    // At the IP cap (the finale) further gains are clamped away: no "+X next".
+    if (state.inf.ipLog >= Engine.INFINITY_LOG) return 'IP ' + fmt(state.inf.ipLog);
     return 'IP ' + fmt(state.inf.ipLog) + ' · +' + fmt(Engine.ipGainLog(state)) + ' next';
   }
 
@@ -4296,14 +4379,20 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function showOfflineModal(info) {
     modalOpen = 'offline';
-    var gainLog = info.before === -Infinity ? info.after : Engine.logSub(info.after, info.before);
+    // The run may have been reset while away (prestige/promote/Infinity), so
+    // the end score can be lower than the start: logSub needs after > before
+    // (it returns NaN otherwise), so only a real gain is shown as one.
+    var gained = info.after > info.before;
+    var scoreLine = gained
+      ? ['Score gained', fmt(info.before === -Infinity ? info.after : Engine.logSub(info.after, info.before))]
+      : ['Score now', fmt(info.after)];
     var lines = [
       el('p', { class: 'help' }, [
         'You were gone for ' + fmtTime(info.seconds) + '.',
       ]),
       el('p', { class: 'stat-line' }, [
-        el('span', { class: 'label' }, ['Score gained']),
-        el('span', {}, [fmt(gainLog)]),
+        el('span', { class: 'label' }, [scoreLine[0]]),
+        el('span', {}, [scoreLine[1]]),
       ]),
     ];
     if (info.ipGainedLog !== undefined && info.ipGainedLog !== -Infinity) {
@@ -4330,11 +4419,13 @@ if (typeof module !== 'undefined' && module.exports) {
     showModal(panel);
   }
 
+  // Closes the Infinity modal even when goInfinite refuses (the score is no
+  // longer at the cap), so its button can never be a dead end.
   function doGoInfinite() {
-    if (Engine.goInfinite(state)) {
-      hideModal();
-      markDirty();
-    }
+    var ok = Engine.goInfinite(state);
+    if (!ok && !Engine.canInfinity(state)) state.inf.pendingConfirm = false;
+    if (modalOpen === 'infinity') hideModal();
+    if (ok) markDirty();
   }
 
   function showInfinityModal() {
@@ -4450,7 +4541,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }, ['IC ' + state.inf.ic.active]));
     }
     if (state.infinities > 0) {
-      frag.appendChild(el('span', { class: 'chip grey' }, ['\u221E ' + state.infinities]));
+      frag.appendChild(el('span', { class: 'chip grey' }, ['\u221E ' + fmtInf(state.infinities)]));
     }
     els.multbarChips.innerHTML = '';
     els.multbarChips.appendChild(frag);
@@ -4979,7 +5070,7 @@ if (typeof module !== 'undefined' && module.exports) {
       try {
         var loaded = Engine.deserialize(importArea.value.trim());
         state = loaded;
-        lastKnownInfinities = state.infinities;
+        syncKnown();
         importErr.textContent = '';
         markDirty();
         toast('Save loaded');
@@ -4997,7 +5088,7 @@ if (typeof module !== 'undefined' && module.exports) {
     twoStepConfirm(resetBtn, 'Hard reset', 'Confirm reset?', function () {
       if (catchingUp) { toast('Catching up…'); return; }
       state = Engine.newState();
-      lastKnownInfinities = state.infinities;
+      syncKnown();
       try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
       markDirty();
       toast('Progress reset');
@@ -5101,13 +5192,35 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // ---------- infinity check ----------
 
-  var lastKnownInfinities = 0;
+  // Real Infinities are detected by the stats.lastInfinities entry
+  // goInfinite pushes (a new object each time), not by the Infinity count,
+  // which passive Infinities (18;1) raise fractionally every tick. IC
+  // completions are detected by diffing ic.done. syncKnown() adopts the
+  // current state without toasting (boot, import, reset, catch-up — the
+  // offline summary lists what happened while away).
+  var lastKnownInfEntry = null;
+  var lastKnownIcDone = [];
 
+  function lastInfEntry() {
+    var h = state.stats.lastInfinities;
+    return h.length ? h[h.length - 1] : null;
+  }
+
+  function syncKnown() {
+    lastKnownInfEntry = lastInfEntry();
+    lastKnownIcDone = state.inf.ic.done.slice();
+  }
+
+  // The modal is shown only while an Infinity can actually be confirmed; if
+  // that stops being true (the score dropped below the cap) it is closed.
   function checkInfinity() {
     var can = Engine.canInfinity(state);
     if (els.infinityBtn) els.infinityBtn.style.display = can ? '' : 'none';
-    if (state.inf.pendingConfirm && !modalOpen) {
+    var pending = state.inf.pendingConfirm && can;
+    if (pending && !modalOpen) {
       showInfinityModal();
+    } else if (!pending && modalOpen === 'infinity') {
+      hideModal();
     }
   }
 
@@ -5118,13 +5231,17 @@ if (typeof module !== 'undefined' && module.exports) {
   // brief specifies.
   function checkInfinityToast() {
     if (modalOpen) return;
-    if (state.infinities > lastKnownInfinities) {
-      var last = state.stats.lastInfinities[state.stats.lastInfinities.length - 1];
-      if (last) {
-        toast('Infinity! +' + fmt(last.ipGainLog) + ' IP (∞ ' + fmtInf(state.infinities) + ')');
-      }
+    var msgs = [];
+    var last = lastInfEntry();
+    if (last && last !== lastKnownInfEntry) {
+      msgs.push('Infinity! +' + fmt(last.ipGainLog) + ' IP (∞ ' + fmtInf(state.infinities) + ')');
     }
-    lastKnownInfinities = state.infinities;
+    var done = state.inf.ic.done;
+    for (var i = 0; i < done.length; i++) {
+      if (done[i] && !lastKnownIcDone[i]) msgs.push('Challenge ' + (i + 1) + ' completed');
+    }
+    if (msgs.length) toast(msgs.join(' \u00B7 '));
+    syncKnown();
   }
 
   function updateIcCanvasBanner() {
@@ -5197,6 +5314,10 @@ if (typeof module !== 'undefined' && module.exports) {
       cancelAnimationFrame(rafId);
       rafId = null;
     }
+    // The overlay borrows the modal slot; whatever modal was open (Infinity,
+    // finale, intro, an unread offline summary) is put back afterwards
+    // instead of being silently closed.
+    var prevModal = modalOpen && els.modal.firstChild ? { kind: modalOpen, node: els.modal.firstChild } : null;
     showCatchupOverlay();
 
     var total = seconds;
@@ -5246,10 +5367,14 @@ if (typeof module !== 'undefined' && module.exports) {
       catchingUp = false;
       catchupCheckpointMs = null;
       hideModal();
+      if (prevModal) {
+        showModal(prevModal.node);
+        modalOpen = prevModal.kind;
+      }
       state.savedAt = Date.now();
       save();
       markDirty();
-      lastKnownInfinities = state.infinities;
+      syncKnown();
       var icCompleted = Object.keys(icSeen).map(Number).sort(function (a, b) { return a - b; });
       lastFrame = 0;
       rafId = requestAnimationFrame(frame);
@@ -5293,6 +5418,15 @@ if (typeof module !== 'undefined' && module.exports) {
     }
   }
 
+  // An offline summary never replaces an open modal: it waits until the
+  // modal is closed and is shown on the next DOM update.
+  var queuedOffline = null;
+
+  function showOrQueueOfflineModal(info) {
+    if (modalOpen) queuedOffline = info;
+    else showOfflineModal(info);
+  }
+
   function domUpdate() {
     updateScorebox();
     renderMultbar();
@@ -5303,6 +5437,11 @@ if (typeof module !== 'undefined' && module.exports) {
       dirty = false;
     } else {
       updateActiveTabBody();
+    }
+    if (queuedOffline && !modalOpen) {
+      var q = queuedOffline;
+      queuedOffline = null;
+      showOfflineModal(q);
     }
     checkInfinity();
     checkInfinityToast();
@@ -5406,12 +5545,17 @@ if (typeof module !== 'undefined' && module.exports) {
         }
       } else {
         var hiddenSec = Math.min((Date.now() - state.savedAt) / 1000, OFFLINE_CAP_SEC);
-        if (hiddenSec > 0 && !catchingUp) {
-          runCatchup(hiddenSec, function (info) {
-            if (hiddenSec > 10 && !modalOpen) {
-              showOfflineModal(info);
-            }
-          });
+        if (catchingUp || hiddenSec < 1) {
+          // Under a second (a quick tab flick): nothing worth catching up.
+        } else if (hiddenSec <= 10) {
+          // A short hide is simulated in one go without the overlay, so it
+          // never flashes over (or closes) an open modal; no summary.
+          Engine.simulate(state, hiddenSec);
+          state.savedAt = Date.now();
+          save();
+          markDirty();
+        } else {
+          runCatchup(hiddenSec, showOrQueueOfflineModal);
         }
         // Reset the frame clock so the next rAF frame doesn't see a huge dt
         // (which frame() clamps to 0.25s anyway) on top of the time we just
@@ -5431,12 +5575,12 @@ if (typeof module !== 'undefined' && module.exports) {
     lastFrame = 0;
     lastDomUpdate = 0;
     lastAutosave = performance.now();
-    lastKnownInfinities = state.infinities;
+    syncKnown();
 
     if (offlineInfo && offlineInfo.seconds > 0) {
       // runCatchup pauses/resumes the rAF loop itself and calls save() once
       // catch-up finishes, so the loop is intentionally not started here.
-      runCatchup(offlineInfo.seconds, showOfflineModal);
+      runCatchup(offlineInfo.seconds, showOrQueueOfflineModal);
     } else {
       if (Help) Help.maybeShowIntroOnBoot(hadSave);
       rafId = requestAnimationFrame(frame);
