@@ -164,6 +164,44 @@ test('the overview never names a topic that unlocks later (no spoilers)', () => 
   }
 });
 
+// Terms that name a hidden feature/mechanic and must not appear in copy the
+// player can see before the goal that introduces them — except where the
+// very same text defines the term inline (the pattern the approved overview
+// already uses for IP / Infinity Upgrades).
+const GATED_TERMS = [
+  { term: 'P.Mult', goal: 'ascendRed' },
+  { term: 'P.Exp', goal: 'ascendRed' },
+  { term: 'GP', goal: 'buyGens' },
+  { term: 'IP', goal: 'reachPromote' },
+  { term: 'Ascension', goal: 'unlockOrange' },
+  { term: 'Promotion', goal: 'unlockWhite' },
+  { term: 'Infinity Upgrade', goal: 'reachPromote' },
+];
+const DEFINES_INLINE = new Set([
+  'overview:IP', 'overview:Infinity Upgrade', // the approved overview text
+  'mults:P.Mult', // the Mults topic's own score-formula definition
+  'glossary:Score per lap:P.Mult', // same P.Mult wording, in the glossary
+]);
+
+test('gated terms never appear in always-visible copy before they are defined', () => {
+  function check(id, text) {
+    for (const { term, goal } of GATED_TERMS) {
+      if (!text.includes(term)) continue;
+      if (DEFINES_INLINE.has(id + ':' + term)) continue;
+      assert.fail(`"${id}" mentions gated term "${term}" (not known until goal ${goal})`);
+    }
+  }
+  const alwaysVisible = (unlock) => unlock === null || unlock === GOAL_IDS[0];
+
+  check('overview', C.fill(overviewText(), fresh()));
+  for (const t of C.topics) {
+    if (alwaysVisible(t.unlock)) check(t.id, C.fill(topicText(t), fresh()));
+  }
+  for (const g of C.glossary) {
+    if (alwaysVisible(g.unlock)) check('glossary:' + g.term, C.fill(g.def, fresh()));
+  }
+});
+
 test('mults topic spells out the score formula', () => {
   const text = topicText(topic('mults'));
   assert.match(text, /score per lap/i);
@@ -238,7 +276,7 @@ test('glossary covers the core terms, each defined', () => {
     assert.ok(g.unlock === null || GOAL_IDS.includes(g.unlock), g.term + ' unlock');
   }
   const def = (term) => C.glossary.find((g) => g.term === term);
-  assert.equal(def('Score').def, 'What rings earn. You spend it on upgrades, and reaching score milestones unlocks resets.');
+  assert.equal(def('Score').def, 'What rings earn. You spend it on levels, and reaching score milestones unlocks resets.');
   assert.equal(def('Infinity Points (IP)').def,
     'Earned each time your score reaches Infinity; spent on permanent Infinity Upgrades.');
   assert.equal(def('Infinity Points (IP)').unlock, 'reachPromote'); // opens when the `infinity` goal is current

@@ -207,7 +207,7 @@
       var plain = GC ? GC.fill(GC.upgradePlain[u.id], s) : '';
       var plainText = plain && plain.charAt(plain.length - 1) === '.' ? plain : (plain + '.');
       var exact = u.desc.charAt(u.desc.length - 1) === '.' ? u.desc : (u.desc + '.');
-      return u.name + ' — ' + plainText + ' Exact effect: ' + exact + ' Cost ' + fmt(Math.log10(u.cost)) + ' IP. ' + status;
+      return u.name + ' — ' + (plain ? plainText + ' ' : '') + 'Exact effect: ' + exact + ' Cost ' + fmt(Math.log10(u.cost)) + ' IP. ' + status;
     },
     gpLine: function (s) {
       return 'Generator Power multiplies every ring’s mult gain per lap by GP^' + Engine.gpExp(s).toFixed(3)

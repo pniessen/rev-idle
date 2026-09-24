@@ -167,8 +167,15 @@
     '18;1': function (v) { return 'now +' + fmtNum(v) + ' ∞/s'; },
   };
 
+  // These upgrades' plain text already states the whole (constant) effect
+  // ("G1 5× stronger", "Ascension power +2", …), so a live "now ×N" suffix
+  // would just repeat it; 14;2/19;1 are skipped too since their live value
+  // is a raw exponent (gpExp), formula jargon with no plain-English form.
+  var SKIP_EFFECT_SUFFIX = ['3;1', '4;1', '6;1', '8;3', '9;2', '13;1', '17;3', '19;3', '14;2', '19;1'];
+
   function effectSuffix(u, effect) {
     if (effect === null) return '';
+    if (SKIP_EFFECT_SUFFIX.indexOf(u.id) !== -1) return '';
     var f = EFFECT_FORMAT[u.id];
     return ' · ' + (f ? f(effect) : ('now ×' + fmtNum(effect)));
   }

@@ -1,5 +1,6 @@
-// src/guide.js — player-guidance DOM: objective + journey strip, next-goal
-// card, first-minutes coach spotlight, the full ? guide, and unlock cards.
+// src/guide.js — player-guidance DOM: intro card + journey line, next-goal
+// card, first-minutes coach spotlight, the compact indexed ? guide (one
+// topic at a time), and unlock cards.
 // Reads GuideGoals (pure goal engine) and GuideContent (copy) as globals;
 // only touches the rest of the app through the hooks passed to Guide.init.
 (function () {
@@ -415,15 +416,18 @@
   }
 
   // ---------- journey line (shared by intro, guide overview, goal card) ----------
-  // Compact text, e.g. "Revolution ✓ → Prestige → …": reached stages get a
-  // checkmark, then the next stage (no checkmark), then an ellipsis if more
-  // remain. No "???" pills — nothing after the next stage is named.
+  // Compact text, e.g. "Revolution (now) → Prestige → …": stages before the
+  // current one are completed (✓ — a stage is completed once the next one
+  // is reached), the current stage is highlighted with "(now)", then the
+  // next stage (no marker), then an ellipsis if more remain. No "???"
+  // pills — nothing after the next stage is named.
 
   function journeyLine(state) {
     var stageIdx = GuideGoals.STAGES.indexOf(GuideGoals.currentStage(state));
     var parts = [];
     GuideGoals.STAGES.forEach(function (id, i) {
-      if (i <= stageIdx) parts.push(GuideContent.stages[id].name + ' ✓');
+      if (i < stageIdx) parts.push(GuideContent.stages[id].name + ' ✓');
+      else if (i === stageIdx) parts.push(GuideContent.stages[id].name + ' (now)');
       else if (i === stageIdx + 1) parts.push(GuideContent.stages[id].name);
     });
     if (stageIdx + 2 < GuideGoals.STAGES.length) parts.push('…');
@@ -563,7 +567,7 @@
     }
     wrap.appendChild(el('p', { class: 'help' }, [fill(content.why, state)]));
     wrap.appendChild(el('div', { class: 'row' }, [
-      el('button', { class: 'btn', onclick: function () { showMe(goal); } }, ['Show me']),
+      el('button', { class: 'btn', onclick: function () { closeGuideModal(); showMe(goal); } }, ['Show me']),
     ]));
     wrap.appendChild(journeyLineEl(state));
     return wrap;

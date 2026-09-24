@@ -209,10 +209,9 @@
       id: 'mults', group: 'basics', title: 'Multipliers and score per lap', unlock: null,
       summary: 'Multipliers decide how much score each lap pays.',
       how: [
-        'Each ring’s ×mult starts at ×1 and grows by its mult gain every lap.',
-        'Score per lap = (product of ring multipliers × P.Mult) ^ exponent. P.Mult and the exponent start at 1; later resets raise them.',
+        'Each ring’s ×mult starts at ×1 and grows every lap.',
+        'Score per lap = (product of ring multipliers × P.Mult) ^ exponent. P.Mult is a bonus multiplier and the exponent is a power; both start at 1 and later resets raise them.',
         'Income = score per lap × laps per second, summed over all rings.',
-        'Example: Red ×3, Orange ×2, P.Mult ×10, exponent 1 → 60 per lap; at 5 laps per second, 300 score per second.',
       ],
       todo: [
         'Level slow outer rings too, so their multipliers grow.',
@@ -223,7 +222,7 @@
       summary: 'What levels cost, and how new rings open.',
       how: [
         'Each level costs a little more score than the one before.',
-        'Buying {UNLOCK_AT} levels of a ring unlocks the next one. Red starts at level 5, but only levels you buy count.',
+        'Every ring unlocks the next after {UNLOCK_AT} of its levels are bought — Red starts at level 5, but that head start doesn’t count.',
         'A new ring starts at level 0 and stays still until you buy it a level.',
       ],
       todo: [
@@ -263,7 +262,7 @@
       id: 'prestige', group: 'resets', title: 'Prestige', unlock: 'ascendRed',
       summary: 'Prestige resets score and rings for a lasting P.Mult and P.Exp.',
       how: [
-        'It opens at {PRESTIGE_MIN} score on the Prestige tab; each one needs at least your last Prestige score.',
+        'It opens at {PRESTIGE_MIN} score on the Prestige tab; each needs at least your last Prestige score.',
         'Gains grow with your score. P.Mult only changes if the new value is higher — gains don’t stack.',
         'P.Exp is the exponent on score per lap, so small increases matter a lot.',
         'Both survive every Prestige; later layers reset them.',
@@ -290,7 +289,7 @@
       summary: 'Going Infinite resets everything so far: rings, P.Mult, P.Exp and Promotions.',
       how: [
         'The first one asks you to confirm; later ones happen by themselves (see Settings → Confirm each Infinity).',
-        'Each adds 1 to your Infinities (∞) count, which several upgrades grow with.',
+        'Each adds to your Infinities (∞) count, which several upgrades grow with.',
         'Upgrades are on the ∞ tab’s Tree; most need one from the column before.',
         'IP and Infinity Upgrades are never lost.',
       ],
@@ -305,7 +304,7 @@
       how: [
         'G1 makes GP. G2 makes G1s, G3 makes G2s, and so on up to G10.',
         'GP multiplies every ring’s mult gain, so multipliers climb faster as a run goes on.',
-        'Each Generator you buy doubles that tier’s output. Bought ones are kept; GP and produced ones reset each Infinity.',
+        'Each Generator you buy doubles that tier’s output, and is kept; GP and produced ones reset each Infinity.',
       ],
       todo: [
         'Buy G2 on ∞ → Gens as soon as you can.',
@@ -321,18 +320,18 @@
         'A fifth helper, Auto-Infinity, comes much later.',
       ],
       todo: [
-        'Buy Auto Ascend, Auto Work and Auto Prestige in the Tree.',
+        'Buy Auto Ascend, Auto Work (Auto-Promote) and Auto Prestige in the Tree.',
         'Check in now and then to spend IP while runs play out.',
       ],
     },
     {
       id: 'challenges', group: 'infinity', title: 'Infinity Challenges', unlock: 'automate',
-      summary: 'Nine Challenges each add a handicap; reach {INF} score despite it for a permanent reward.',
+      summary: 'A run under a handicap, done nine times over, each harder than the last.',
       how: [
         'The Challenges! upgrade unlocks them on ∞ → ICs. They must be beaten in order.',
         'Starting or leaving a Challenge resets your run without paying IP.',
         'Each one beaten gives its reward and raises the IP from every Infinity.',
-        'Beating all nine unlocks Break Infinity.',
+        'Beating all nine unlocks the next stage.',
       ],
       todo: [
         'Start Challenge 1 and let automation run; some take hours.',
@@ -400,7 +399,7 @@
     '5;1': 'More P.Mult per Prestige the longer this Infinity runs (up to ×{LTP_CAP})',
     '5;2': 'More P.Exp per Prestige; grows with your Infinities',
     '5;3': 'Unlocks Auto-Prestige: prestiges for you when it pays off',
-    '6;1': 'Ascension power +2: each Ascension boosts mult gain more',
+    '6;1': 'Ascension power base +2',
     '6;2': 'Ascension power up a little; grows with your Infinities',
     '7;1': 'Unlocks Infinity Challenges: nine handicapped runs with rewards',
     '8;1': 'G1 stronger the longer this Infinity runs',
@@ -521,22 +520,22 @@
   var glossary = [
     { term: 'Ring', unlock: null, def: 'One of the ten coloured circles, Red to White. Each has a dot that orbits it.' },
     { term: 'Lap', unlock: null, def: 'One full trip of a ring’s dot around its circle. Every lap earns score.' },
-    { term: 'Score', unlock: null, def: 'What rings earn. You spend it on upgrades, and reaching score milestones unlocks resets.' },
+    { term: 'Score', unlock: null, def: 'What rings earn. You spend it on levels, and reaching score milestones unlocks resets.' },
     { term: 'Level', unlock: null, def: 'How fast a ring spins. Laps per second = level × the ring’s base speed × speed boosts.' },
-    { term: 'Level cap', unlock: null, def: 'The highest level a ring can reach ({CAP} for Red right now). Ascending raises it.' },
+    { term: 'Level cap', unlock: 'unlockOrange', def: 'The highest level a ring can reach ({CAP} for Red right now). Ascending raises it.' },
     { term: 'Laps per second', unlock: null, def: 'How often a ring completes a lap. Your income adds these up across all rings.' },
     { term: 'Multiplier', unlock: null, def: 'Each ring’s ×mult. It starts at ×1 and grows every time that ring laps. All ring multipliers multiply together.' },
-    { term: 'Mult gain', unlock: null, def: 'How much a ring’s multiplier grows per lap. Ascension, Promotions and GP raise it.' },
-    { term: 'Score per lap', unlock: null, def: '(All ring multipliers multiplied together × P.Mult) ^ exponent. Every lap of any ring earns this.' },
+    { term: 'Mult gain', unlock: null, def: 'How much a ring’s multiplier grows per lap. Later features raise it.' },
+    { term: 'Score per lap', unlock: null, def: '(All ring multipliers multiplied together × P.Mult) ^ exponent. P.Mult is a bonus multiplier and the exponent is a power; both start at 1 and later resets raise them.' },
     { term: 'Income', unlock: null, def: 'Score per second: score per lap × laps per second across all rings.' },
     { term: 'Bulk buy', unlock: null, def: 'The ×1 / ×10 / Max switch (key M). Max buys as many levels as you can afford.' },
-    { term: 'Run', unlock: null, def: 'Your progress since the last reset. Each Prestige, Promotion or Infinity starts a new run.' },
+    { term: 'Run', unlock: null, def: 'Your progress since the last reset. Each reset starts a new run.' },
     { term: 'Ascension', unlock: 'unlockOrange', def: 'Resetting a maxed ring to level 5. Its mult gain grows ×ascension power, and its level cap rises by 10.' },
     { term: 'Ascension power', unlock: 'unlockOrange', def: 'How much each Ascension multiplies a ring’s mult gain (×{ASC_POWER} now).' },
     { term: 'Prestige', unlock: 'ascendRed', def: 'Resetting score and rings, from {PRESTIGE_MIN} score, for a lasting P.Mult and P.Exp.' },
     { term: 'P.Mult', unlock: 'ascendRed', def: 'Prestige multiplier. It multiplies score per lap and only goes up through Prestiges. Promotion and Infinity reset it.' },
     { term: 'P.Exp', unlock: 'ascendRed', def: 'Prestige exponent. Your score per lap is raised to this power, so small gains matter a lot. Promotion and Infinity reset it.' },
-    { term: 'Exponent', unlock: null, def: 'The power score per lap is raised to: P.Exp plus bonuses from later upgrades. It starts at 1.' },
+    { term: 'Exponent', unlock: null, def: 'The power score per lap is raised to. It starts at 1; later resets and upgrades raise it.' },
     { term: 'Promotion', unlock: 'unlockWhite', def: 'One of four boosts (Mult Gain, Lap Speed, Ascension Power, Promotion Power). Promoting resets P.Mult.' },
     { term: 'Promotion XP', unlock: 'unlockWhite', def: 'Earned once P.Mult reaches ×{PROMO_MIN}. Promoting sets one Promotion’s level to your XP.' },
     { term: 'Infinity', unlock: 'reachPromote', def: 'The score limit, {INF}. Going Infinite resets the Revolution stage for IP.' },

@@ -321,6 +321,7 @@ p.help {
   border: 1px solid var(--line);
   color: var(--text);
   padding: 9px 14px;
+  min-height: 40px;
   border-radius: 8px;
   cursor: pointer;
   font-weight: 500;
@@ -953,6 +954,24 @@ textarea.save-area {
   text-align: left;
 }
 
+/* Mobile (centered modal, not the sheet): the panel itself is a capped-height
+   flex column so the header and tab row stay put and only the topic content
+   scrolls — otherwise the whole panel (including its own top padding)
+   scrolls as one box and the sticky tab row leaves a gap of padding visible
+   above it. */
+@media (max-width: 820px) {
+  .guide-panel:not(.guide-panel-sheet) {
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+    overflow: hidden;
+  }
+  .guide-panel:not(.guide-panel-sheet) .guide-panel-head { flex: none; }
+  .guide-panel:not(.guide-panel-sheet) .guide-panel-layout { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+  .guide-panel:not(.guide-panel-sheet) .guide-panel-layout-mobile .guide-tabs { flex: none; }
+  .guide-panel:not(.guide-panel-sheet) .guide-panel-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+}
+
 .guide-panel-head {
   display: flex;
   align-items: center;
@@ -1106,6 +1125,8 @@ textarea.save-area {
 
 .guide-overview-how li { margin-top: 6px; }
 
+.guide-overview > p.help:not(:first-child) { margin-top: 12px; }
+
 .guide-rightnow {
   margin-top: 16px;
   padding-top: 14px;
@@ -1116,6 +1137,7 @@ textarea.save-area {
   font-family: var(--font-display);
   font-weight: 600;
   font-size: 13px;
+  margin-top: 6px;
 }
 
 .guide-glossary { margin: 0; font-size: 12px; }
