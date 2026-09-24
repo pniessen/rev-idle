@@ -1,0 +1,1988 @@
+<title>Rev Idle</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Unbounded:wght@500;700&display=swap">
+<style>:root {
+  color-scheme: dark;
+  --ink: #07060d;
+  --panel: #100e1a;
+  --panel-2: #161327;
+  --line: #262238;
+  --text: #ece9f7;
+  --muted: #8e88aa;
+  --accent: #c9b8ff;
+  --warn: #ffb454;
+  --font-display: 'Unbounded', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--font-body);
+  overflow-x: hidden;
+}
+
+body {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+button, input, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#app {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "multbar multbar"
+    "stage panel";
+}
+
+@media (max-width: 820px) {
+  #app {
+    height: auto;
+    min-height: 100%;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(46vh, auto) auto;
+    grid-template-areas:
+      "multbar"
+      "stage"
+      "panel";
+  }
+}
+
+/* ---------- multbar ---------- */
+
+#multbar {
+  grid-area: multbar;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 16px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  min-height: 20px;
+}
+
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.chip.grey { color: var(--muted); border-color: var(--line); }
+
+/* ---------- stage / canvas ---------- */
+
+#stage {
+  grid-area: stage;
+  position: relative;
+  overflow: hidden;
+  background: var(--ink);
+  min-height: 0;
+}
+
+#orbits {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#scorebox {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  pointer-events: none;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+
+#score {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(28px, 5vw, 48px);
+  letter-spacing: -0.01em;
+}
+
+#income {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+/* ---------- panel / tabs ---------- */
+
+#panel {
+  grid-area: panel;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+}
+
+@media (max-width: 820px) {
+  #panel { border-left: none; border-top: 1px solid var(--line); }
+}
+
+#tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 12px 16px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  color: var(--muted);
+  padding: 8px 12px;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+}
+
+.tab-btn:hover { color: var(--text); }
+
+.tab-btn[aria-selected="true"] {
+  color: var(--text);
+  border-color: var(--line);
+  background: var(--panel-2);
+}
+
+#tab-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.tab-body-inner > * + * { margin-top: 14px; }
+
+h2.section-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text);
+}
+
+p.help {
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ---------- buy mode segmented control ---------- */
+
+#buy-mode {
+  display: flex;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px;
+  width: fit-content;
+}
+
+#buy-mode button {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#buy-mode button[aria-pressed="true"] {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+/* ---------- circle rows ---------- */
+
+.circle-row {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.circle-row.locked {
+  opacity: 0.5;
+  grid-template-columns: 12px 1fr;
+}
+
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 8px 1px currentColor;
+}
+
+.circle-info { min-width: 0; }
+
+.circle-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.circle-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.circle-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+
+/* ---------- buttons ---------- */
+
+.btn {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 9px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) { border-color: var(--muted); }
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn.affordable {
+  color: var(--circle, var(--accent));
+  border-color: var(--circle, var(--accent));
+}
+
+.btn.primary {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn.ascend {
+  color: var(--ink);
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 16px 2px rgba(201, 184, 255, 0.55);
+  animation: ascend-pulse 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn.ascend { animation: none; }
+}
+
+@keyframes ascend-pulse {
+  0%, 100% { box-shadow: 0 0 12px 1px rgba(201, 184, 255, 0.45); }
+  50% { box-shadow: 0 0 22px 4px rgba(201, 184, 255, 0.75); }
+}
+
+.btn.confirming {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.btn.full-width { width: 100%; }
+
+/* ---------- prestige / promote ---------- */
+
+.stat-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.stat-line .label { color: var(--muted); font-family: var(--font-body); }
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  background: var(--panel-2);
+}
+
+.card + .card { margin-top: 10px; }
+
+.card-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+/* ---------- stats / settings ---------- */
+
+.kv-list { display: flex; flex-direction: column; gap: 6px; }
+
+textarea.save-area {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  padding: 8px;
+}
+
+.error-text { color: var(--warn); font-size: 12px; min-height: 1em; }
+
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* ---------- modal / toast ---------- */
+
+#modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 3, 8, 0.75);
+  z-index: 20;
+  padding: 16px;
+}
+
+#modal[hidden] { display: none; }
+
+.modal-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.modal-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%) translateY(8px);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 13px;
+  z-index: 30;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#toast[hidden] { display: none; }
+
+#toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #toast { transition: none; }
+}
+</style>
+<div id="app">
+  <header id="multbar" aria-label="Multipliers"></header>
+  <main id="stage"><canvas id="orbits" aria-label="Orbiting circles"></canvas>
+    <div id="scorebox"><div id="score">0</div><div id="income">0 /s</div></div></main>
+  <aside id="panel">
+    <nav id="tabs" role="tablist"></nav>
+    <section id="tab-body"></section>
+  </aside>
+  <div id="modal" hidden></div>
+  <div id="toast" role="status" hidden></div>
+</div>
+<script>// Rev Idle engine — pure state + formulas + tick + (later) serialize.
+// UMD-ish: module.exports in Node, window.Engine in browser.
+// Structured so Task 2 (ascension/prestige/promotions/serialize) can add
+// functions and slot them into the returned Engine object below.
+
+const Engine = (() => {
+  const CIRCLES = [
+    { name: 'Red', color: '#ff3b4f', initCost: 4, costMult: 1.20, baseSpeed: 0.2 },
+    { name: 'Orange', color: '#ff8a2a', initCost: 100, costMult: 1.24, baseSpeed: 0.1 },
+    { name: 'Yellow', color: '#ffd93b', initCost: 1e3, costMult: 1.28, baseSpeed: 1 / 15 },
+    { name: 'Green', color: '#4dff6a', initCost: 1e4, costMult: 1.32, baseSpeed: 0.05 },
+    { name: 'Turquoise', color: '#2affc6', initCost: 1e6, costMult: 1.36, baseSpeed: 0.04 },
+    { name: 'Cyan', color: '#2ad9ff', initCost: 1e9, costMult: 1.40, baseSpeed: 1 / 30 },
+    { name: 'Blue', color: '#3b6bff', initCost: 1e12, costMult: 1.44, baseSpeed: 1 / 35 },
+    { name: 'Purple', color: '#a24dff', initCost: 1e15, costMult: 1.48, baseSpeed: 0.025 },
+    { name: 'Pink', color: '#ff4dd2', initCost: 1e18, costMult: 1.52, baseSpeed: 1 / 45 },
+    { name: 'White', color: '#f4f1ff', initCost: 1e27, costMult: 1.56, baseSpeed: 0.02 },
+  ];
+
+  const INFINITY_LOG = Math.log10(1.79e308);
+
+  const TUNE = {
+    pMultBase: 2.56,
+    pMultPow: 2.25,
+    pExpDiv: 225,
+    prestigeMinLog: 10,
+    promoMin: 2000, // tuned (spec: 1000) — see test/sim.js / task-3 report
+    promoPow: 0.75,
+    // log10 of a fresh circle's base mult gain. Spec/wiki: 0.01; tuned to 0.04
+    // so the first prestige lands at ~10 min instead of ~28 min (task-3 report).
+    multGainLog0: Math.log10(0.04),
+  };
+
+  // --- log-space helpers ---
+
+  function logAdd(a, b) {
+    if (a === -Infinity) return b;
+    if (b === -Infinity) return a;
+    if (a < b) { const t = a; a = b; b = t; }
+    return a + Math.log10(1 + 10 ** (b - a));
+  }
+
+  function logSub(a, b) {
+    // requires a >= b
+    if (b === -Infinity) return a;
+    if (Math.abs(a - b) < 1e-12) return -Infinity;
+    return a + Math.log10(1 - 10 ** (b - a));
+  }
+
+  // --- state ---
+
+  function freshCircle(i) {
+    return {
+      unlocked: i === 0,
+      level: i === 0 ? 5 : 0,
+      bought: 0,
+      ascensions: 0,
+      multLog: 0,
+      multGainLog: TUNE.multGainLog0,
+      progress: 0,
+      laps: 0,
+    };
+  }
+
+  function newState() {
+    return {
+      v: 1,
+      scoreLog: -Infinity,
+      circles: CIRCLES.map((_, i) => freshCircle(i)),
+      pMult: 1,
+      pExp: 1,
+      prestigeReqLog: TUNE.prestigeMinLog,
+      promo: [0, 0, 0, 0],
+      ip: 0,
+      infinities: 0,
+      stats: { totalLaps: 0, prestiges: 0, promotions: 0, playTime: 0, bestScoreLog: -Infinity },
+      savedAt: 0,
+    };
+  }
+
+  // --- formulas ---
+
+  function promoEffects(s) {
+    const [L1, L2, L3, L4] = s.promo;
+    const p4 = 1 + 0.05 * Math.pow(L4, 0.48);
+    const p1 = p4 * (Math.floor(Math.pow(L1, 1.5)) + 1);
+    const p2 = p4 * (1 + Math.sqrt(L2));
+    const p3 = p4 * (10 + Math.pow(L3, 0.82));
+    return { p1, p2, p3, p4 };
+  }
+
+  function levelCap(circle) {
+    return 100 + 10 * circle.ascensions;
+  }
+
+  function lapsPerSec(s, i) {
+    const c = s.circles[i];
+    if (!c.unlocked) return 0;
+    const def = CIRCLES[i];
+    const p = promoEffects(s);
+    return c.level * def.baseSpeed * p.p2;
+  }
+
+  function costLog(s, i) {
+    const c = s.circles[i];
+    const def = CIRCLES[i];
+    const a = c.ascensions;
+    const m = def.costMult;
+    let sum = Math.log10(def.initCost);
+    for (let k = 0; k < a; k++) {
+      sum += (100 + 10 * k) * Math.log10(m + 0.1 * k);
+    }
+    sum += c.level * Math.log10(m + 0.1 * a);
+    return sum;
+  }
+
+  function buy(s, i, n) {
+    const c = s.circles[i];
+    if (!c.unlocked) return 0;
+    const cap = levelCap(c);
+    const unlimited = n === 'max';
+    let count = 0;
+    while ((unlimited || count < n) && c.level < cap) {
+      const cost = costLog(s, i);
+      if (s.scoreLog >= cost) {
+        s.scoreLog = logSub(s.scoreLog, cost);
+        c.level++;
+        c.bought++;
+        count++;
+      } else {
+        break;
+      }
+    }
+    if (c.bought >= 5) {
+      const next = s.circles[i + 1];
+      if (next && !next.unlocked) {
+        next.unlocked = true;
+        next.level = 0;
+      }
+    }
+    return count;
+  }
+
+  function perRevLog(s) {
+    let sum = 0;
+    for (const c of s.circles) {
+      if (c.unlocked) sum += c.multLog;
+    }
+    sum += Math.log10(s.pMult);
+    return s.pExp * sum;
+  }
+
+  function incomeLog(s) {
+    let sum = 0;
+    for (let i = 0; i < s.circles.length; i++) sum += lapsPerSec(s, i);
+    if (sum <= 0) return -Infinity;
+    return perRevLog(s) + Math.log10(sum);
+  }
+
+  function tick(s, dt) {
+    const p = promoEffects(s);
+    const laps = new Array(s.circles.length).fill(0);
+    let N = 0;
+    for (let i = 0; i < s.circles.length; i++) {
+      const c = s.circles[i];
+      if (!c.unlocked) continue;
+      const def = CIRCLES[i];
+      const lps = c.level * def.baseSpeed * p.p2;
+      c.progress += lps * dt;
+      const n = Math.floor(c.progress);
+      c.progress -= n;
+      c.laps += n;
+      laps[i] = n;
+      if (n > 0) {
+        c.multLog = logAdd(c.multLog, Math.log10(n) + c.multGainLog + Math.log10(p.p1));
+      }
+      N += n;
+    }
+    if (N > 0) {
+      s.scoreLog = logAdd(s.scoreLog, Math.log10(N) + perRevLog(s));
+    }
+    s.stats.totalLaps += N;
+    s.stats.playTime += dt;
+    s.stats.bestScoreLog = Math.max(s.stats.bestScoreLog, s.scoreLog);
+    return { laps };
+  }
+
+  function simulate(s, seconds) {
+    const scoreLogBefore = s.scoreLog;
+    let remaining = seconds;
+    while (remaining > 0) {
+      const dt = Math.min(1, remaining);
+      tick(s, dt);
+      remaining -= dt;
+    }
+    return { scoreLogBefore, scoreLogAfter: s.scoreLog };
+  }
+
+  // --- reset helper ---
+
+  function resetRun(s) {
+    s.scoreLog = -Infinity;
+    s.circles = CIRCLES.map((_, i) => freshCircle(i));
+  }
+
+  // --- ascension ---
+
+  function canAscend(s, i) {
+    const c = s.circles[i];
+    return c.unlocked && c.level >= levelCap(c);
+  }
+
+  function ascend(s, i) {
+    if (!canAscend(s, i)) return false;
+    const c = s.circles[i];
+    const p3 = promoEffects(s).p3;
+    c.level = 5;
+    c.ascensions++;
+    c.multGainLog += Math.log10(p3);
+    return true;
+  }
+
+  // --- prestige ---
+
+  function pendingPrestige(s) {
+    if (s.scoreLog < 3) return { pMult: 1, pExp: 1 };
+    const pMult = TUNE.pMultBase * (s.scoreLog - 3) ** TUNE.pMultPow;
+    const pExp = 1 + Math.max(0, s.scoreLog - 5) / TUNE.pExpDiv;
+    return { pMult, pExp };
+  }
+
+  function canPrestige(s) {
+    return s.scoreLog >= Math.max(TUNE.prestigeMinLog, s.prestigeReqLog);
+  }
+
+  function prestige(s) {
+    if (!canPrestige(s)) return false;
+    const g = pendingPrestige(s);
+    s.pMult = Math.max(s.pMult, g.pMult);
+    s.pExp = Math.max(s.pExp, g.pExp);
+    s.prestigeReqLog = s.scoreLog;
+    s.stats.prestiges++;
+    resetRun(s);
+    return true;
+  }
+
+  // --- promotions ---
+
+  function promoXp(s) {
+    const pending = canPrestige(s) ? pendingPrestige(s).pMult : 0;
+    const m = Math.max(s.pMult, pending);
+    if (m < TUNE.promoMin) return 0;
+    return Math.floor((m / TUNE.promoMin) ** TUNE.promoPow);
+  }
+
+  function canPromote(s, k) {
+    return promoXp(s) > s.promo[k];
+  }
+
+  function promote(s, k) {
+    if (!canPromote(s, k)) return false;
+    const xp = promoXp(s);
+    s.promo[k] = xp;
+    resetRun(s);
+    s.pMult = 1;
+    s.pExp = 1;
+    s.prestigeReqLog = TUNE.prestigeMinLog;
+    s.stats.promotions++;
+    return true;
+  }
+
+  // --- infinity ---
+
+  function canInfinity(s) {
+    return s.scoreLog >= INFINITY_LOG;
+  }
+
+  function goInfinite(s) {
+    if (!canInfinity(s)) return false;
+    const stats = s.stats;
+    const ip = s.ip + 1;
+    const infinities = s.infinities + 1;
+    Object.assign(s, newState());
+    s.stats = stats;
+    s.ip = ip;
+    s.infinities = infinities;
+    return true;
+  }
+
+  // --- serialize ---
+
+  function serialize(s) {
+    const json = JSON.stringify(s, (k, v) => (v === -Infinity ? '-inf' : v));
+    if (typeof btoa === 'function') return btoa(json);
+    return Buffer.from(json, 'utf-8').toString('base64');
+  }
+
+  function deserialize(str) {
+    try {
+      const json = typeof atob === 'function'
+        ? atob(str)
+        : Buffer.from(str, 'base64').toString('utf-8');
+      const obj = JSON.parse(json, (k, v) => (v === '-inf' ? -Infinity : v));
+      if (!obj || obj.v !== 1 || !Array.isArray(obj.circles) || obj.circles.length !== 10) {
+        throw new Error('Invalid save');
+      }
+      return Object.assign(newState(), obj);
+    } catch (e) {
+      throw new Error('Invalid save');
+    }
+  }
+
+  function fmtLog(x) {
+    if (x === -Infinity) return '0';
+    if (x < 6) {
+      return Math.floor(10 ** x + 1e-9).toLocaleString('en-US');
+    }
+    let exp = Math.floor(x);
+    let mantissa = 10 ** (x - exp);
+    let mantissaStr = mantissa.toFixed(2);
+    if (parseFloat(mantissaStr) >= 10) {
+      exp += 1;
+      mantissa = mantissa / 10;
+      mantissaStr = mantissa.toFixed(2);
+    }
+    return `${mantissaStr}e${exp}`;
+  }
+
+  return {
+    CIRCLES,
+    INFINITY_LOG,
+    TUNE,
+    newState,
+    tick,
+    simulate,
+    lapsPerSec,
+    perRevLog,
+    incomeLog,
+    levelCap,
+    costLog,
+    buy,
+    canAscend,
+    ascend,
+    pendingPrestige,
+    canPrestige,
+    prestige,
+    promoXp,
+    canPromote,
+    promote,
+    canInfinity,
+    goInfinite,
+    serialize,
+    deserialize,
+    promoEffects,
+    fmtLog,
+    logAdd,
+  };
+})();
+
+if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
+else window.Engine = Engine;
+</script>
+<script>// src/render.js
+// Canvas orbit renderer for Rev Idle. Attaches window.Renderer.
+// Consumes Engine.CIRCLES / Engine.lapsPerSec via window.Engine at call time.
+(function () {
+  'use strict';
+
+  var INK = '#07060d';
+  var TWO_PI = Math.PI * 2;
+  var MAX_PULSES = 40;
+  var PULSE_LIFE = 0.5; // seconds
+  var PULSE_COOLDOWN = 0.1; // seconds, per circle
+  var FAST_LPS_THRESHOLD = 6;
+  var TRAIL_SEGMENTS = 24;
+
+  // Deterministic PRNG (mulberry32) so the starfield is seeded/stable.
+  function mulberry32(seed) {
+    return function () {
+      seed |= 0;
+      seed = (seed + 0x6d2b79f5) | 0;
+      var t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function hexToRgb(hex) {
+    var h = hex.replace('#', '');
+    if (h.length === 3) {
+      h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    }
+    var num = parseInt(h, 16);
+    return {
+      r: (num >> 16) & 255,
+      g: (num >> 8) & 255,
+      b: num & 255
+    };
+  }
+
+  // Colors are drawn from a small fixed palette (Engine.CIRCLES, ~10 entries).
+  // Parse each hex color exactly once and cache the result, keyed by the hex
+  // string itself, so no per-frame/per-segment parsing or string building is
+  // needed. Shared at module scope so multiple Renderer instances reuse it.
+  var glowStopCache = Object.create(null);
+
+  // Precomputed radial-gradient color-stop strings for a given hex color.
+  // Gradients need the alpha baked into each stop's color (ctx.globalAlpha
+  // applies to the whole fill, not per-stop), so this is the one place we
+  // still need rgba() strings — computed once per unique color, then cached.
+  function getGlowStops(hex) {
+    var cached = glowStopCache[hex];
+    if (cached) return cached;
+    var c = hexToRgb(hex);
+    var head = 'rgba(' + c.r + ',' + c.g + ',' + c.b + ',';
+    cached = {
+      s90: head + '0.9)',
+      s35: head + '0.35)',
+      s0: head + '0)'
+    };
+    glowStopCache[hex] = cached;
+    return cached;
+  }
+
+  function prefersReducedMotion() {
+    try {
+      return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function create(canvas) {
+    var ctx = canvas.getContext('2d');
+
+    var width = 0; // CSS pixels
+    var height = 0;
+    var dpr = 1;
+
+    var starCanvas = document.createElement('canvas');
+    var starCtx = starCanvas.getContext('2d');
+
+    var time = 0; // accumulated seconds, used for pulsing animations
+    var reducedMotion = prefersReducedMotion();
+
+    // Ring-buffer-ish pool of active lap-pulse ripples. Reused array, no per-frame alloc.
+    var pulses = []; // { i, r, color, start }
+    var lastSpawn = new Array(10).fill(-Infinity);
+
+    function buildStarfield() {
+      var w = Math.max(1, Math.floor(width));
+      var h = Math.max(1, Math.floor(height));
+      starCanvas.width = Math.max(1, Math.floor(w * dpr));
+      starCanvas.height = Math.max(1, Math.floor(h * dpr));
+      starCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      starCtx.clearRect(0, 0, w, h);
+
+      var rand = mulberry32(1337);
+      var count = Math.round((w * h) / 2600);
+      for (var k = 0; k < count; k++) {
+        var x = rand() * w;
+        var y = rand() * h;
+        var r = rand() * 1.1 + 0.2;
+        var a = rand() * 0.5 + 0.1;
+        starCtx.beginPath();
+        starCtx.fillStyle = 'rgba(255,255,255,' + a.toFixed(3) + ')';
+        starCtx.arc(x, y, r, 0, TWO_PI);
+        starCtx.fill();
+      }
+    }
+
+    function resize() {
+      dpr = window.devicePixelRatio || 1;
+      var w = canvas.clientWidth || canvas.width || 1;
+      var h = canvas.clientHeight || canvas.height || 1;
+      width = w;
+      height = h;
+      canvas.width = Math.max(1, Math.floor(w * dpr));
+      canvas.height = Math.max(1, Math.floor(h * dpr));
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      buildStarfield();
+    }
+
+    function orbitRadius(i, minWH) {
+      var rMax = 0.46 * minWH;
+      var rMin = 0.08 * minWH;
+      return rMin + (i * (rMax - rMin)) / 9;
+    }
+
+    function drawBackground(cx, cy, minWH) {
+      ctx.fillStyle = INK;
+      ctx.fillRect(0, 0, width, height);
+
+      var vign = ctx.createRadialGradient(cx, cy, minWH * 0.1, cx, cy, minWH * 0.75);
+      vign.addColorStop(0, 'rgba(20,16,36,0)');
+      vign.addColorStop(1, 'rgba(0,0,0,0.55)');
+      ctx.fillStyle = vign;
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.drawImage(starCanvas, 0, 0, width, height);
+    }
+
+    function drawLockedTrack(cx, cy, r) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 5]);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, TWO_PI);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawFastRing(cx, cy, r, color) {
+      var pulse = reducedMotion ? 0 : Math.sin(time * 4) * 0.6 + 0.6; // 0..1.2
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.2 + pulse * 1.4;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 14 + pulse * 6;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, TWO_PI);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawTrackAndDot(cx, cy, r, color, progress, lps) {
+      // Track
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, TWO_PI);
+      ctx.stroke();
+      ctx.restore();
+
+      var angle = progress * TWO_PI - Math.PI / 2;
+
+      // Comet trail: arc behind the dot. Uses ctx.globalAlpha per segment
+      // with the raw hex strokeStyle so no per-segment color string is
+      // built or parsed.
+      var trailFrac = Math.min(0.9, lps * 0.25);
+      if (trailFrac > 0.001) {
+        var trailLen = trailFrac * TWO_PI;
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        for (var s = 0; s < TRAIL_SEGMENTS; s++) {
+          var t0 = s / TRAIL_SEGMENTS;
+          var t1 = (s + 1) / TRAIL_SEGMENTS;
+          var a0 = angle - trailLen * t0;
+          var a1 = angle - trailLen * t1;
+          ctx.globalAlpha = (1 - t1) * 0.5;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, a0, a1, true);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // Dot
+      var dotR = 4 + Math.min(1, lps / FAST_LPS_THRESHOLD) * 2;
+      var dx = cx + r * Math.cos(angle);
+      var dy = cy + r * Math.sin(angle);
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.arc(dx, dy, dotR, 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function spawnPulseIfNeeded(i, r, color, lapsCount) {
+      if (reducedMotion) return;
+      if (!lapsCount || lapsCount <= 0) return;
+      if (time - lastSpawn[i] < PULSE_COOLDOWN) return;
+      lastSpawn[i] = time;
+      if (pulses.length >= MAX_PULSES) {
+        pulses.shift();
+      }
+      pulses.push({ i: i, r: r, color: color, start: time });
+    }
+
+    function drawPulses(cx, cy) {
+      if (pulses.length === 0) return;
+      var kept = [];
+      for (var p = 0; p < pulses.length; p++) {
+        var pulse = pulses[p];
+        var age = time - pulse.start;
+        if (age >= PULSE_LIFE) continue;
+        var frac = age / PULSE_LIFE;
+        var radius = pulse.r + frac * 26;
+        ctx.save();
+        ctx.globalAlpha = (1 - frac) * 0.55;
+        ctx.strokeStyle = pulse.color;
+        ctx.lineWidth = 2 * (1 - frac) + 0.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, TWO_PI);
+        ctx.stroke();
+        ctx.restore();
+        kept.push(pulse);
+      }
+      pulses.length = 0;
+      for (var k = 0; k < kept.length; k++) pulses.push(kept[k]);
+    }
+
+    function drawCoreGlow(cx, cy, minWH, color) {
+      var radius = Math.max(10, minWH * 0.07);
+      var stops = getGlowStops(color);
+      var grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+      grad.addColorStop(0, stops.s90);
+      grad.addColorStop(0.4, stops.s35);
+      grad.addColorStop(1, stops.s0);
+      ctx.save();
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, TWO_PI);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function draw(state, dt, lapsThisTick) {
+      time += dt || 0;
+      reducedMotion = prefersReducedMotion();
+
+      var Engine = window.Engine;
+      var cx = width / 2;
+      var cy = height / 2;
+      var minWH = Math.min(width, height);
+
+      drawBackground(cx, cy, minWH);
+
+      var highestColor = '#a24dff';
+      var haveUnlocked = false;
+
+      var circles = (state && state.circles) || [];
+      var count = Math.min(10, circles.length);
+
+      for (var i = 0; i < count; i++) {
+        var circleState = circles[i];
+        var r = orbitRadius(i, minWH);
+
+        if (!circleState || !circleState.unlocked) {
+          drawLockedTrack(cx, cy, r);
+          continue;
+        }
+
+        var cfg = (Engine && Engine.CIRCLES && Engine.CIRCLES[i]) || { color: '#ffffff' };
+        var color = cfg.color;
+        var lps = Engine && typeof Engine.lapsPerSec === 'function' ? Engine.lapsPerSec(state, i) : 0;
+
+        if (lps > FAST_LPS_THRESHOLD) {
+          drawFastRing(cx, cy, r, color);
+        } else {
+          drawTrackAndDot(cx, cy, r, color, circleState.progress || 0, lps);
+        }
+
+        var lapsCount = lapsThisTick && lapsThisTick[i];
+        spawnPulseIfNeeded(i, r, color, lapsCount);
+
+        highestColor = color;
+        haveUnlocked = true;
+      }
+
+      drawPulses(cx, cy);
+      drawCoreGlow(cx, cy, minWH, haveUnlocked ? highestColor : '#3b2a55');
+    }
+
+    resize();
+
+    return { draw: draw, resize: resize };
+  }
+
+  window.Renderer = { create: create };
+})();
+</script>
+<script>// src/ui.js \u2014 DOM panel, buy modes, prestige/promotion/infinity screens,
+// loop, save/load/offline. Only calls the Shared Engine API on window.Engine
+// and window.Renderer.
+(function () {
+  'use strict';
+
+  var SAVE_KEY = 'revidle.save.v1';
+  var DOM_INTERVAL = 100; // ms, ~10Hz
+  var AUTOSAVE_INTERVAL = 10000; // ms
+  var OFFLINE_CAP_SEC = 8 * 3600;
+  var CONFIRM_WINDOW = 3000; // ms
+
+  var Engine = window.Engine;
+
+  var state = null;
+  var renderer = null;
+  var canvas = null;
+
+  var buyMode = '1'; // '1' | '10' | 'max'
+  var currentTab = 'circles';
+  var dirty = true;
+  var lastVisibleTabIds = '';
+  var lastInfinityFlag = false;
+  var modalOpen = null; // 'offline' | 'infinity' | null
+
+  var els = {};
+
+  var TABS = [
+    { id: 'circles', label: 'Circles', visible: function () { return true; } },
+    {
+      id: 'prestige',
+      label: 'Prestige',
+      visible: function (s) { return s.scoreLog >= 8 || s.stats.prestiges > 0; },
+    },
+    {
+      id: 'promote',
+      label: 'Promote',
+      visible: function (s) {
+        var pending = Engine.canPrestige(s) ? Engine.pendingPrestige(s).pMult : 0;
+        if (s.pMult >= 1000 || pending >= 1000) return true;
+        for (var i = 0; i < s.promo.length; i++) if (s.promo[i] > 0) return true;
+        return false;
+      },
+    },
+    { id: 'stats', label: 'Stats', visible: function () { return true; } },
+    { id: 'settings', label: 'Settings', visible: function () { return true; } },
+  ];
+
+  var PROMO_META = [
+    { key: 'p1', name: 'Mult Gain' },
+    { key: 'p2', name: 'Lap Speed' },
+    { key: 'p3', name: 'Ascension Power' },
+    { key: 'p4', name: 'Promotion Power' },
+  ];
+
+  // ---------- small helpers ----------
+
+  function cloneState(s) {
+    return Engine.deserialize(Engine.serialize(s));
+  }
+
+  function fmt(x) {
+    return Engine.fmtLog(x);
+  }
+
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      for (var k in attrs) {
+        if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+        if (k === 'class') node.className = attrs[k];
+        else if (k === 'html') node.innerHTML = attrs[k];
+        else if (k.indexOf('on') === 0 && typeof attrs[k] === 'function') {
+          node.addEventListener(k.slice(2), attrs[k]);
+        } else if (attrs[k] === false || attrs[k] === null || attrs[k] === undefined) {
+          // skip
+        } else {
+          node.setAttribute(k, attrs[k]);
+        }
+      }
+    }
+    (children || []).forEach(function (c) {
+      if (c === null || c === undefined) return;
+      node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    });
+    return node;
+  }
+
+  function fmtTime(seconds) {
+    seconds = Math.max(0, Math.floor(seconds));
+    var h = Math.floor(seconds / 3600);
+    var m = Math.floor((seconds % 3600) / 60);
+    var s = seconds % 60;
+    var parts = [];
+    if (h > 0) parts.push(h + 'h');
+    if (h > 0 || m > 0) parts.push(m + 'm');
+    parts.push(s + 's');
+    return parts.join(' ');
+  }
+
+  function markDirty() {
+    dirty = true;
+  }
+
+  function twoStepConfirm(btn, label, confirmLabel, action) {
+    var confirming = false;
+    var timer = null;
+    btn.textContent = label;
+    btn.addEventListener('click', function () {
+      if (!confirming) {
+        confirming = true;
+        btn.textContent = confirmLabel;
+        btn.classList.add('confirming');
+        timer = setTimeout(function () {
+          confirming = false;
+          btn.textContent = label;
+          btn.classList.remove('confirming');
+        }, CONFIRM_WINDOW);
+      } else {
+        clearTimeout(timer);
+        confirming = false;
+        btn.textContent = label;
+        btn.classList.remove('confirming');
+        action();
+      }
+    });
+  }
+
+  // ---------- toast ----------
+
+  var toastTimer = null;
+
+  function toast(msg) {
+    if (!els.toast) return;
+    els.toast.textContent = msg;
+    els.toast.hidden = false;
+    requestAnimationFrame(function () { els.toast.classList.add('show'); });
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      els.toast.classList.remove('show');
+      setTimeout(function () { els.toast.hidden = true; }, 220);
+    }, 2500);
+  }
+
+  // ---------- modal ----------
+
+  function showModal(node) {
+    els.modal.innerHTML = '';
+    els.modal.appendChild(node);
+    els.modal.hidden = false;
+  }
+
+  function hideModal() {
+    els.modal.hidden = true;
+    els.modal.innerHTML = '';
+    modalOpen = null;
+  }
+
+  function showOfflineModal(info) {
+    modalOpen = 'offline';
+    var gainLog = info.after;
+    var panel = el('div', { class: 'modal-panel' }, [
+      el('h2', { class: 'modal-title' }, ['While you were away']),
+      el('p', { class: 'help' }, [
+        'You were gone for ' + fmtTime(info.seconds) + '.',
+      ]),
+      el('p', { class: 'stat-line' }, [
+        el('span', { class: 'label' }, ['Score gained']),
+        el('span', {}, [fmt(gainLog)]),
+      ]),
+      el('button', { class: 'btn primary full-width', onclick: hideModal }, ['Continue']),
+    ]);
+    showModal(panel);
+  }
+
+  function showInfinityModal() {
+    modalOpen = 'infinity';
+    var s = state.stats;
+    var panel = el('div', { class: 'modal-panel' }, [
+      el('h2', { class: 'modal-title' }, ['Infinity reached']),
+      el('p', { class: 'help' }, [
+        'Score has exceeded what a number can hold. Going infinite resets your ' +
+          'progress and keeps 1 Infinity Point (IP) for a future update.',
+      ]),
+      el('div', { class: 'kv-list' }, [
+        statLine('Play time', fmtTime(s.playTime)),
+        statLine('Total laps', fmt(Math.log10(Math.max(1, s.totalLaps)))),
+        statLine('Prestiges', String(s.prestiges)),
+        statLine('Promotions', String(s.promotions)),
+      ]),
+      el('button', {
+        class: 'btn primary full-width',
+        onclick: function () {
+          if (Engine.goInfinite(state)) {
+            toast('Infinity reached \u2014 welcome back');
+            hideModal();
+            markDirty();
+          }
+        },
+      }, ['Go Infinite']),
+    ]);
+    showModal(panel);
+  }
+
+  function statLine(label, value) {
+    return el('div', { class: 'stat-line' }, [
+      el('span', { class: 'label' }, [label]),
+      el('span', {}, [value]),
+    ]);
+  }
+
+  // ---------- multbar ----------
+
+  function renderMultbar() {
+    var frag = document.createDocumentFragment();
+    var p = Engine.promoEffects(state);
+    for (var i = 0; i < state.circles.length; i++) {
+      var c = state.circles[i];
+      if (!c.unlocked) continue;
+      var def = Engine.CIRCLES[i];
+      var chip = el('span', { class: 'chip', style: 'color:' + def.color + ';border-color:' + def.color }, [
+        '\u00D7' + fmt(c.multLog),
+      ]);
+      frag.appendChild(chip);
+    }
+    frag.appendChild(el('span', { class: 'chip grey' }, ['P \u00D7' + fmt(Math.log10(state.pMult))]));
+    if (state.pExp > 1) {
+      frag.appendChild(el('span', { class: 'chip grey' }, ['^' + state.pExp.toFixed(3)]));
+    }
+    if (state.infinities > 0) {
+      frag.appendChild(el('span', { class: 'chip grey' }, ['\u221E ' + state.infinities]));
+    }
+    els.multbar.innerHTML = '';
+    els.multbar.appendChild(frag);
+  }
+
+  // ---------- scorebox ----------
+
+  function updateScorebox() {
+    els.score.textContent = fmt(state.scoreLog);
+    var income = Engine.incomeLog(state);
+    els.income.textContent = fmt(income) + ' /s';
+  }
+
+  // ---------- nav / tabs ----------
+
+  function computeVisibleTabs() {
+    return TABS.filter(function (t) { return t.visible(state); });
+  }
+
+  function syncFromHash() {
+    var id = (location.hash || '#circles').replace('#', '');
+    var visible = computeVisibleTabs().map(function (t) { return t.id; });
+    currentTab = visible.indexOf(id) !== -1 ? id : 'circles';
+    markDirty();
+    renderNav();
+  }
+
+  function renderNav() {
+    var visible = computeVisibleTabs();
+    els.tabs.innerHTML = '';
+    visible.forEach(function (t) {
+      var btn = el('button', {
+        class: 'tab-btn',
+        role: 'tab',
+        'aria-selected': String(t.id === currentTab),
+        onclick: function () { location.hash = '#' + t.id; },
+      }, [t.label]);
+      els.tabs.appendChild(btn);
+    });
+  }
+
+  function checkTabsVisibility() {
+    var ids = computeVisibleTabs().map(function (t) { return t.id; }).join(',');
+    if (ids !== lastVisibleTabIds) {
+      lastVisibleTabIds = ids;
+      renderNav();
+      if (computeVisibleTabs().map(function (t) { return t.id; }).indexOf(currentTab) === -1) {
+        currentTab = 'circles';
+      }
+      markDirty();
+    }
+  }
+
+  // ---------- circles tab ----------
+
+  function buyPreview(i, mode) {
+    var targetN = mode === 'max' ? Infinity : Number(mode);
+    var clone = cloneState(state);
+    var totalCostLog = -Infinity;
+    var count = 0;
+    while (count < targetN) {
+      var costLog = Engine.costLog(clone, i);
+      var bought = Engine.buy(clone, i, 1);
+      if (bought === 0) break;
+      totalCostLog = Engine.logAdd(totalCostLog, costLog);
+      count++;
+    }
+    return { count: count, totalCostLog: totalCostLog };
+  }
+
+  function renderCirclesTab(root) {
+    var wrap = el('div', { class: 'tab-body-inner' });
+
+    var modeRow = el('div', { id: 'buy-mode', role: 'group', 'aria-label': 'Buy mode' });
+    ['1', '10', 'max'].forEach(function (m) {
+      var label = m === 'max' ? 'Max' : '\u00D7' + m;
+      var btn = el('button', {
+        'aria-pressed': String(buyMode === m),
+        onclick: function () {
+          buyMode = m;
+          markDirty();
+        },
+      }, [label]);
+      modeRow.appendChild(btn);
+    });
+    wrap.appendChild(modeRow);
+
+    var firstLocked = -1;
+    for (var i = 0; i < state.circles.length; i++) {
+      var c = state.circles[i];
+      if (c.unlocked) {
+        wrap.appendChild(renderCircleRow(i));
+      } else if (firstLocked === -1) {
+        firstLocked = i;
+      }
+    }
+    if (firstLocked > 0) {
+      var prevName = Engine.CIRCLES[firstLocked - 1].name;
+      wrap.appendChild(el('div', { class: 'circle-row locked' }, [
+        el('div', { class: 'swatch', style: 'color:' + Engine.CIRCLES[firstLocked].color }),
+        el('div', { class: 'circle-info' }, [
+          el('div', { class: 'circle-name' }, [Engine.CIRCLES[firstLocked].name]),
+          el('div', { class: 'circle-meta' }, ['Unlocks at 5 ' + prevName + ' levels bought']),
+        ]),
+      ]));
+    }
+
+    root.innerHTML = '';
+    root.appendChild(wrap);
+  }
+
+  function renderCircleRow(i) {
+    var c = state.circles[i];
+    var def = Engine.CIRCLES[i];
+    var cap = Engine.levelCap(c);
+    var p = Engine.promoEffects(state);
+    var lps = Engine.lapsPerSec(state, i);
+    var gainLog = c.multGainLog + Math.log10(p.p1);
+
+    var row = el('div', { class: 'circle-row', 'data-i': String(i) });
+    row.appendChild(el('div', { class: 'swatch', style: 'color:' + def.color }));
+
+    var info = el('div', { class: 'circle-info' }, [
+      el('div', { class: 'circle-name', style: 'color:' + def.color }, [def.name]),
+      el('div', { class: 'circle-meta' }, [
+        el('span', { class: 'lv' }, ['Lv ' + c.level + '/' + cap]),
+        el('span', { class: 'lps' }, [lps.toFixed(2) + ' laps/s']),
+        el('span', { class: 'gain' }, ['+' + fmt(gainLog) + '/lap']),
+      ]),
+    ]);
+    row.appendChild(info);
+
+    var actions = el('div', { class: 'circle-actions' });
+    var buyBtn = el('button', { class: 'btn buy-btn', 'data-i': String(i) });
+    buyBtn.style.setProperty('--circle', def.color);
+    buyBtn.addEventListener('click', function () {
+      var wasUnlockedNext = state.circles[i + 1] ? state.circles[i + 1].unlocked : true;
+      var n = buyMode === 'max' ? 'max' : Number(buyMode);
+      var bought = Engine.buy(state, i, n);
+      if (bought > 0) {
+        markDirty();
+        var isNowUnlocked = state.circles[i + 1] ? state.circles[i + 1].unlocked : true;
+        if (!wasUnlockedNext && isNowUnlocked) {
+          toast(Engine.CIRCLES[i + 1].name + ' unlocked');
+        }
+      }
+    });
+    actions.appendChild(buyBtn);
+    updateBuyButton(buyBtn, i);
+
+    if (Engine.canAscend(state, i)) {
+      var ascendBtn = el('button', { class: 'btn ascend' }, ['Ascend']);
+      ascendBtn.addEventListener('click', function () {
+        if (Engine.ascend(state, i)) {
+          toast(def.name + ' ascended');
+          markDirty();
+        }
+      });
+      actions.appendChild(ascendBtn);
+    }
+
+    row.appendChild(actions);
+    return row;
+  }
+
+  function updateBuyButton(btn, i) {
+    var c = state.circles[i];
+    var cap = Engine.levelCap(c);
+    if (c.level >= cap) {
+      btn.textContent = 'Maxed';
+      btn.disabled = true;
+      btn.classList.remove('affordable');
+      return;
+    }
+    var preview = buyPreview(i, buyMode);
+    var n = buyMode === 'max' ? preview.count : Number(buyMode);
+    var costLog = preview.count > 0 ? preview.totalCostLog : Engine.costLog(state, i);
+    var labelN = buyMode === 'max' ? (preview.count > 0 ? preview.count : 'Max') : n;
+    btn.textContent = 'Buy \u00D7' + labelN + ' \u2014 ' + fmt(costLog);
+    btn.disabled = preview.count === 0;
+    btn.classList.toggle('affordable', preview.count > 0);
+  }
+
+  function updateCirclesTab(root) {
+    var modeRow = root.querySelector('#buy-mode');
+    if (modeRow) {
+      var btns = modeRow.querySelectorAll('button');
+      var modes = ['1', '10', 'max'];
+      btns.forEach(function (b, idx) {
+        b.setAttribute('aria-pressed', String(buyMode === modes[idx]));
+      });
+    }
+    var rows = root.querySelectorAll('.circle-row[data-i]');
+    rows.forEach(function (row) {
+      var i = Number(row.getAttribute('data-i'));
+      var btn = row.querySelector('.buy-btn');
+      if (btn) updateBuyButton(btn, i);
+    });
+  }
+
+  // ---------- prestige tab ----------
+
+  function renderPrestigeTab(root) {
+    var wrap = el('div', { class: 'tab-body-inner' });
+    wrap.appendChild(el('h2', { class: 'section-title' }, ['Prestige']));
+    wrap.appendChild(el('p', { class: 'help' }, [
+      'Reset your circles for a permanent multiplier and exponent boost based on your score.',
+    ]));
+
+    var reqLog = Math.max(Engine.TUNE.prestigeMinLog, state.prestigeReqLog);
+    wrap.appendChild(el('div', { id: 'prestige-req', class: 'stat-line' }, [
+      el('span', { class: 'label' }, ['Requirement']),
+      el('span', {}, ['score \u2265 ' + fmt(reqLog)]),
+    ]));
+
+    wrap.appendChild(el('div', { id: 'prestige-current', class: 'stat-line' }, [
+      el('span', { class: 'label' }, ['Current']),
+      el('span', {}, ['\u00D7' + fmt(Math.log10(state.pMult)) + '  ^' + state.pExp.toFixed(3)]),
+    ]));
+
+    wrap.appendChild(el('div', { id: 'prestige-pending', class: 'stat-line' }, [
+      el('span', { class: 'label' }, ['Pending']),
+      el('span', {}, [pendingPrestigeText()]),
+    ]));
+
+    var btn = el('button', { id: 'prestige-btn', class: 'btn primary full-width' });
+    btn.disabled = !Engine.canPrestige(state);
+    twoStepConfirm(btn, 'Prestige', 'Confirm reset?', function () {
+      if (Engine.prestige(state)) {
+        toast('Prestiged');
+        markDirty();
+      }
+    });
+    wrap.appendChild(btn);
+
+    root.innerHTML = '';
+    root.appendChild(wrap);
+  }
+
+  function pendingPrestigeText() {
+    var g = Engine.pendingPrestige(state);
+    return '\u00D7' + fmt(Math.log10(g.pMult)) + '  ^' + g.pExp.toFixed(3);
+  }
+
+  function updatePrestigeTab(root) {
+    var pending = root.querySelector('#prestige-pending span:last-child');
+    if (pending) pending.textContent = pendingPrestigeText();
+    var btn = root.querySelector('#prestige-btn');
+    if (btn) btn.disabled = !Engine.canPrestige(state);
+  }
+
+  // ---------- promote tab ----------
+
+  function effectAt(k, xp) {
+    var arr = state.promo.slice();
+    arr[k] = xp;
+    return Engine.promoEffects({ promo: arr })[PROMO_META[k].key];
+  }
+
+  function renderPromoteTab(root) {
+    var wrap = el('div', { class: 'tab-body-inner' });
+    wrap.appendChild(el('h2', { class: 'section-title' }, ['Promote']));
+    wrap.appendChild(el('div', { id: 'promo-xp', class: 'stat-line' }, [
+      el('span', { class: 'label' }, ['XP available']),
+      el('span', {}, [String(Engine.promoXp(state))]),
+    ]));
+
+    PROMO_META.forEach(function (meta, k) {
+      var level = state.promo[k];
+      var xp = Engine.promoXp(state);
+      var cur = Engine.promoEffects(state)[meta.key];
+      var next = effectAt(k, xp);
+      var card = el('div', { class: 'card', 'data-k': String(k) }, [
+        el('div', { class: 'card-title' }, [meta.name + ' \u2014 Lv ' + level]),
+        el('div', { class: 'stat-line' }, [
+          el('span', { class: 'label' }, ['Effect']),
+          el('span', { class: 'effect-text' }, [cur.toFixed(3) + ' \u2192 ' + next.toFixed(3)]),
+        ]),
+      ]);
+      var btn = el('button', { class: 'btn full-width' });
+      btn.disabled = !Engine.canPromote(state, k);
+      twoStepConfirm(btn, 'Promote', 'Confirm reset?', (function (kk) {
+        return function () {
+          if (Engine.promote(state, kk)) {
+            toast(PROMO_META[kk].name + ' promoted');
+            markDirty();
+          }
+        };
+      })(k));
+      card.appendChild(btn);
+      wrap.appendChild(card);
+    });
+
+    root.innerHTML = '';
+    root.appendChild(wrap);
+  }
+
+  function updatePromoteTab(root) {
+    var xpEl = root.querySelector('#promo-xp span:last-child');
+    var xp = Engine.promoXp(state);
+    if (xpEl) xpEl.textContent = String(xp);
+    var cards = root.querySelectorAll('.card[data-k]');
+    cards.forEach(function (card) {
+      var k = Number(card.getAttribute('data-k'));
+      var meta = PROMO_META[k];
+      var cur = Engine.promoEffects(state)[meta.key];
+      var next = effectAt(k, xp);
+      var effectEl = card.querySelector('.effect-text');
+      if (effectEl) effectEl.textContent = cur.toFixed(3) + ' \u2192 ' + next.toFixed(3);
+      var btn = card.querySelector('button');
+      if (btn) btn.disabled = !Engine.canPromote(state, k);
+    });
+  }
+
+  // ---------- stats tab ----------
+
+  function renderStatsTab(root) {
+    var wrap = el('div', { class: 'tab-body-inner' });
+    wrap.appendChild(el('h2', { class: 'section-title' }, ['Stats']));
+    var list = el('div', { id: 'stats-list', class: 'kv-list' }, [
+      statLine('Play time', fmtTime(state.stats.playTime)),
+      statLine('Total laps', String(state.stats.totalLaps)),
+      statLine('Best score', fmt(state.stats.bestScoreLog)),
+      statLine('Prestiges', String(state.stats.prestiges)),
+      statLine('Promotions', String(state.stats.promotions)),
+      statLine('Infinities', String(state.infinities)),
+    ]);
+    wrap.appendChild(list);
+    root.innerHTML = '';
+    root.appendChild(wrap);
+  }
+
+  function updateStatsTab(root) {
+    var list = root.querySelector('#stats-list');
+    if (!list) return;
+    var rows = list.children;
+    var values = [
+      fmtTime(state.stats.playTime),
+      String(state.stats.totalLaps),
+      fmt(state.stats.bestScoreLog),
+      String(state.stats.prestiges),
+      String(state.stats.promotions),
+      String(state.infinities),
+    ];
+    for (var i = 0; i < rows.length; i++) {
+      var span = rows[i].querySelector('span:last-child');
+      if (span) span.textContent = values[i];
+    }
+  }
+
+  // ---------- settings tab ----------
+
+  function renderSettingsTab(root) {
+    var wrap = el('div', { class: 'tab-body-inner' });
+    wrap.appendChild(el('h2', { class: 'section-title' }, ['Settings']));
+
+    wrap.appendChild(el('h2', { class: 'section-title' }, ['Export']));
+    var exportArea = el('textarea', { class: 'save-area', readonly: 'true' });
+    exportArea.value = Engine.serialize(state);
+    var copyBtn = el('button', { class: 'btn' }, ['Copy']);
+    copyBtn.addEventListener('click', function () {
+      var text = exportArea.value;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          toast('Copied to clipboard');
+        }, function () {
+          exportArea.select();
+          toast('Selected \u2014 press Ctrl/Cmd+C to copy');
+        });
+      } else {
+        exportArea.select();
+        toast('Selected \u2014 press Ctrl/Cmd+C to copy');
+      }
+    });
+    wrap.appendChild(exportArea);
+    wrap.appendChild(el('div', { class: 'row' }, [copyBtn]));
+
+    wrap.appendChild(el('h2', { class: 'section-title' }, ['Import']));
+    var importArea = el('textarea', { class: 'save-area' });
+    var importErr = el('div', { class: 'error-text' });
+    var loadBtn = el('button', { class: 'btn' }, ['Load']);
+    loadBtn.addEventListener('click', function () {
+      try {
+        var loaded = Engine.deserialize(importArea.value.trim());
+        state = loaded;
+        importErr.textContent = '';
+        markDirty();
+        toast('Save loaded');
+      } catch (e) {
+        importErr.textContent = 'Invalid save string.';
+      }
+    });
+    wrap.appendChild(importArea);
+    wrap.appendChild(el('div', { class: 'row' }, [loadBtn]));
+    wrap.appendChild(importErr);
+
+    wrap.appendChild(el('h2', { class: 'section-title' }, ['Hard reset']));
+    wrap.appendChild(el('p', { class: 'help' }, ['Erases all progress. This cannot be undone.']));
+    var resetBtn = el('button', { class: 'btn full-width' });
+    twoStepConfirm(resetBtn, 'Hard reset', 'Confirm reset?', function () {
+      state = Engine.newState();
+      try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
+      markDirty();
+      toast('Progress reset');
+      location.hash = '#circles';
+    });
+    wrap.appendChild(resetBtn);
+
+    root.innerHTML = '';
+    root.appendChild(wrap);
+  }
+
+  // ---------- tab dispatch ----------
+
+  var TAB_RENDER = {
+    circles: renderCirclesTab,
+    prestige: renderPrestigeTab,
+    promote: renderPromoteTab,
+    stats: renderStatsTab,
+    settings: renderSettingsTab,
+  };
+
+  var TAB_UPDATE = {
+    circles: updateCirclesTab,
+    prestige: updatePrestigeTab,
+    promote: updatePromoteTab,
+    stats: updateStatsTab,
+    settings: function () {},
+  };
+
+  function renderActiveTabBody() {
+    (TAB_RENDER[currentTab] || renderCirclesTab)(els.tabBody);
+  }
+
+  function updateActiveTabBody() {
+    (TAB_UPDATE[currentTab] || function () {})(els.tabBody);
+  }
+
+  // ---------- keyboard ----------
+
+  function onKeyDown(e) {
+    var tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (e.key === 'm' || e.key === 'M') {
+      var modes = ['1', '10', 'max'];
+      buyMode = modes[(modes.indexOf(buyMode) + 1) % modes.length];
+      markDirty();
+      return;
+    }
+    var digit = e.key;
+    var idx = -1;
+    if (digit >= '1' && digit <= '9') idx = Number(digit) - 1;
+    else if (digit === '0') idx = 9;
+    if (idx >= 0 && idx < state.circles.length) {
+      var n = buyMode === 'max' ? 'max' : Number(buyMode);
+      var wasUnlockedNext = state.circles[idx + 1] ? state.circles[idx + 1].unlocked : true;
+      var bought = Engine.buy(state, idx, n);
+      if (bought > 0) {
+        markDirty();
+        var isNowUnlocked = state.circles[idx + 1] ? state.circles[idx + 1].unlocked : true;
+        if (!wasUnlockedNext && isNowUnlocked) {
+          toast(Engine.CIRCLES[idx + 1].name + ' unlocked');
+        }
+      }
+    }
+  }
+
+  // ---------- save / load ----------
+
+  function save() {
+    try {
+      state.savedAt = Date.now();
+      localStorage.setItem(SAVE_KEY, Engine.serialize(state));
+    } catch (e) { /* ignore: game must run without localStorage */ }
+  }
+
+  function loadFromLocalStorage() {
+    try {
+      var raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return null;
+      return Engine.deserialize(raw);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ---------- infinity check ----------
+
+  function checkInfinity() {
+    var can = Engine.canInfinity(state);
+    if (can && !lastInfinityFlag && !modalOpen) {
+      showInfinityModal();
+    }
+    lastInfinityFlag = can;
+  }
+
+  // ---------- main loop ----------
+
+  var rafId = null;
+  var lastFrame = 0;
+  var lastDomUpdate = 0;
+  var lastAutosave = 0;
+
+  function frame(now) {
+    rafId = requestAnimationFrame(frame);
+    if (!lastFrame) lastFrame = now;
+    var dt = (now - lastFrame) / 1000;
+    lastFrame = now;
+    dt = Math.min(dt, 0.25);
+
+    var result = Engine.tick(state, dt);
+    if (renderer) renderer.draw(state, dt, result.laps);
+
+    if (now - lastDomUpdate >= DOM_INTERVAL) {
+      lastDomUpdate = now;
+      domUpdate();
+    }
+    if (now - lastAutosave >= AUTOSAVE_INTERVAL) {
+      lastAutosave = now;
+      save();
+    }
+  }
+
+  function domUpdate() {
+    updateScorebox();
+    renderMultbar();
+    checkTabsVisibility();
+    if (dirty) {
+      renderNav();
+      renderActiveTabBody();
+      dirty = false;
+    } else {
+      updateActiveTabBody();
+    }
+    checkInfinity();
+  }
+
+  // ---------- boot ----------
+
+  function initDom() {
+    els.multbar = document.getElementById('multbar');
+    els.stage = document.getElementById('stage');
+    els.score = document.getElementById('score');
+    els.income = document.getElementById('income');
+    els.tabs = document.getElementById('tabs');
+    els.tabBody = document.getElementById('tab-body');
+    els.modal = document.getElementById('modal');
+    els.toast = document.getElementById('toast');
+    canvas = document.getElementById('orbits');
+  }
+
+  function init(offlineInfo) {
+    initDom();
+
+    if (window.Renderer && typeof window.Renderer.create === 'function') {
+      renderer = window.Renderer.create(canvas);
+    }
+    window.addEventListener('resize', function () {
+      if (renderer) renderer.resize();
+    });
+
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('hashchange', syncFromHash);
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) save();
+    });
+
+    syncFromHash();
+    lastVisibleTabIds = computeVisibleTabs().map(function (t) { return t.id; }).join(',');
+    renderNav();
+    renderActiveTabBody();
+    dirty = false;
+    updateScorebox();
+    renderMultbar();
+    lastInfinityFlag = Engine.canInfinity(state);
+
+    if (offlineInfo) {
+      showOfflineModal(offlineInfo);
+    }
+
+    lastFrame = 0;
+    lastDomUpdate = 0;
+    lastAutosave = performance.now();
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function start(data) {
+    state = null;
+
+    if (data && data.save) {
+      try { state = Engine.deserialize(data.save); } catch (e) { state = null; }
+    }
+    if (!state) {
+      state = loadFromLocalStorage();
+    }
+
+    var offlineInfo = null;
+    if (state && state.savedAt) {
+      var offlineSec = Math.min((Date.now() - state.savedAt) / 1000, OFFLINE_CAP_SEC);
+      if (offlineSec > 10) {
+        var sim = Engine.simulate(state, offlineSec);
+        offlineInfo = { seconds: offlineSec, before: sim.scoreLogBefore, after: sim.scoreLogAfter };
+      }
+    }
+
+    if (!state) state = Engine.newState();
+
+    init(offlineInfo);
+  }
+
+  if (window.claude && window.claude.hot && typeof window.claude.hot.snapshot === 'function') {
+    window.claude.hot.snapshot(function () {
+      return { save: Engine.serialize(state) };
+    });
+  }
+
+  if (window.claude && window.claude.hot && window.claude.hot.ready) {
+    window.claude.hot.ready(start);
+  } else {
+    start((window.claude && window.claude.hot && window.claude.hot.data) || {});
+  }
+})();
+</script>
