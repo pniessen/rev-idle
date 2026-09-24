@@ -556,3 +556,58 @@ test('Break: challenges stay fixed; fixing clamps and triggers Infinity', () => 
   s.scoreLog = 400; E.tick(s, 0.01); assert.equal(s.infinities, 5);
   E.setBroken(s, false); assert.equal(s.scoreLog, E.INFINITY_LOG); E.tick(s, 0.01); assert.equal(s.infinities, 7);
 });
+
+const starState = () => own(withGens(E.newState()), '21;1');
+
+test('star cost steps: +3 to e87, then +7, then growing', () => {
+  const s = starState(); const at = (n) => { s.inf.stars.n = n; return E.starCostLog(s); };
+  assert.equal(at(0), 33); assert.equal(at(1), 36); assert.equal(at(18), 87); assert.equal(at(19), 94);
+  assert.equal(at(30), 171); assert.equal(at(31), 179);
+});
+
+test('buying stars and star upgrades', () => {
+  const s = starState(); s.inf.ipLog = 34;
+  assert.ok(E.buyStar(s)); assert.equal(s.inf.stars.n, 1); close(s.inf.ipLog, E.logSub(34, 33));
+  assert.equal(E.starBaseCostLog(s), 34); assert.equal(E.starExpCostLog(s), 35);
+  s.inf.stars.nb = 1; assert.equal(E.starBaseCostLog(s), 38);
+  s.inf.stars.ne = 12; s.inf.ipLog = 500; assert.ok(!E.buyStarExp(s));
+  s.inf.stars.ne = 0; assert.ok(E.buyStarExp(s)); assert.equal(s.inf.stars.ne, 1);
+  const t = withGens(E.newState()); t.inf.ipLog = 40; assert.ok(!E.canBuyStar(t)); assert.ok(!E.buyStar(t));
+});
+
+test('stardust rate, accumulation and GP boost', () => {
+  const s = starState(); assert.equal(E.sdRateLog(s), -Infinity);
+  s.inf.stars.n = 1; close(E.sdRateLog(s), Math.log10(0.05 * 2.75));
+  s.inf.stars.n = 2; s.inf.stars.nb = 10; close(E.sdRateLog(s), Math.log10(0.05 * 5.5 * 5.5));
+  s.inf.stars.n = 1; s.inf.stars.nb = 0;
+  for (let i = 0; i < 100; i++) E.tick(s, 0.1);
+  close(10 ** s.inf.stars.sdLog, 1.375, 1e-6);
+  s.inf.stars.sdLog = 2; s.inf.stars.ne = 2; close(E.starGpLog(s), 1.0);
+});
+
+test('stardust multiplies GP gain', () => {
+  const a = starState(); a.infinities = 1; a.inf.stars.sdLog = 2; a.inf.stars.ne = 2;
+  E.tick(a, 0.1); close(10 ** a.inf.gpLog, 1, 1e-9);
+});
+
+test('stardust upgrades: costs, caps, effects', () => {
+  const s = starState();
+  close(E.sdUpgCostLog(s, 0), 1); s.inf.stars.sdU[0] = 1; close(E.sdUpgCostLog(s, 0), 3);
+  close(E.sdUpgCostLog(s, 1), Math.log10(20), 1e-5); close(E.sdUpgCostLog(s, 2), Math.log10(50), 1e-5); close(E.sdUpgCostLog(s, 3), 2);
+  s.inf.stars.sdLog = 2; assert.ok(E.buySdUpg(s, 3)); assert.equal(s.inf.stars.sdU[3], 1); assert.equal(s.inf.stars.sdLog, -Infinity);
+  s.inf.stars.sdLog = 100;
+  s.inf.stars.sdU[0] = 9; assert.ok(!E.canBuySdUpg(s, 0));
+  s.inf.stars.sdU[2] = 50; assert.ok(!E.canBuySdUpg(s, 2));
+  s.inf.stars.sdU[3] = 85; assert.ok(!E.canBuySdUpg(s, 3)); close(E.sdU4Mult(s), 62.62);
+  const t = withGens(E.newState()); t.infinities = 8; t.inf.gens[2].b = 1;
+  const g3 = E.genMultLog(t, 2); t.inf.stars.sdU[0] = 2; close(E.genMultLog(t, 2), g3 + Math.log10(8));
+  const ip = E.ipGainLog(t); t.inf.stars.sdU[1] = 3; close(E.ipGainLog(t), ip + Math.log10(4));
+  own(t, '2;1'); t.inf.stars.sdU[2] = 10; close(E.mods(t).expAdd, 0.11);
+  assert.equal(E.SD_UPGRADES.length, 4);
+});
+
+test('Infinity resets Stardust but keeps stars and upgrades', () => {
+  const s = starState(); s.inf.stars = { n: 2, nb: 1, ne: 1, sdLog: 5, sdU: [1, 2, 3, 4] }; s.scoreLog = E.INFINITY_LOG;
+  E.goInfinite(s);
+  assert.deepEqual(s.inf.stars, { n: 2, nb: 1, ne: 1, sdLog: -Infinity, sdU: [1, 2, 3, 4] });
+});

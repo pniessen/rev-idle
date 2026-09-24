@@ -1042,6 +1042,8 @@ if (typeof module !== 'undefined' && module.exports) {
     u121Pow: 0.5, u171Pow: 0.25, u161Pow: 0.2, u141K: 0.1,
     icRefSec: 36000, ctfMax: 1e4, u163Ref: 3600, passiveInfK: 2, u201Ref: 600, u201Cap: 100,
     gpExp14: 0.75, gpExp19: 0.9,
+    starBaseCost: [34, 4], starExpCost: [35, 5], starExpMax: 12,
+    sdUpgCost: [[1, 2], [Math.log10(20), 1], [Math.log10(50), Math.log10(3)], [2, Math.log10(2)]], sdUpgMax: [9, Infinity, 50, 85],
   });
   const I = E._inf; I.MOD_FNS = []; I.IP_FNS = []; I.PRE_FNS = []; I.GEN_FNS = []; I.GPEXP_FNS = [];
   I.starGpLog = () => 0; // Task 9 replaces this
@@ -1422,6 +1424,83 @@ if (typeof module !== 'undefined' && module.exports) {
     runReset(s);
     return true;
   }
+  // ===== Stars and Stardust (spec §7) =====
+  function starCostLog(s) {
+    const n = s.inf.stars.n;
+    let cost = 33;
+    for (let j = 0; j < n; j++) {
+      const step = j < 18 ? 3 : j < 30 ? 7 : 7 + (j - 29);
+      cost += step;
+    }
+    return cost;
+  }
+  function canBuyStar(s) {
+    return !!s.inf.upg['21;1'] && s.inf.ipLog >= starCostLog(s);
+  }
+  function buyStar(s) {
+    if (!canBuyStar(s)) return false;
+    s.inf.ipLog = E.logSub(s.inf.ipLog, starCostLog(s));
+    s.inf.stars.n += 1;
+    return true;
+  }
+  function starBaseCostLog(s) {
+    const T = E.TUNE;
+    return T.starBaseCost[0] + T.starBaseCost[1] * s.inf.stars.nb;
+  }
+  function buyStarBase(s) {
+    if (!s.inf.upg['21;1'] || s.inf.ipLog < starBaseCostLog(s)) return false;
+    s.inf.ipLog = E.logSub(s.inf.ipLog, starBaseCostLog(s));
+    s.inf.stars.nb += 1;
+    return true;
+  }
+  function starExpCostLog(s) {
+    const T = E.TUNE;
+    return T.starExpCost[0] + T.starExpCost[1] * s.inf.stars.ne;
+  }
+  function buyStarExp(s) {
+    const T = E.TUNE;
+    if (!s.inf.upg['21;1'] || s.inf.stars.ne >= T.starExpMax || s.inf.ipLog < starExpCostLog(s)) return false;
+    s.inf.ipLog = E.logSub(s.inf.ipLog, starExpCostLog(s));
+    s.inf.stars.ne += 1;
+    return true;
+  }
+  function sdRateLog(s) {
+    const n = s.inf.stars.n;
+    if (n < 1) return -Infinity;
+    const base = 2.75 + 0.275 * s.inf.stars.nb;
+    return Math.log10(0.05) + n * Math.log10(base);
+  }
+  function starGpLog(s) {
+    const exp = 0.4 + 0.05 * s.inf.stars.ne;
+    return exp * Math.max(0, s.inf.stars.sdLog);
+  }
+  I.starGpLog = starGpLog;
+  const SD_UPGRADES = [
+    { j: 0, name: "Star Extension", max: 9, desc: "1;1's ×∞ also applies to G2 … G(1+n)" },
+    { j: 1, name: "IP Multiplier", max: Infinity, desc: "IP ×(1+n)" },
+    { j: 2, name: "Exponent Boost", max: 50, desc: "2;1 gives +0.01·n more commonExp" },
+    { j: 3, name: "Passive Multiplier", max: 85, desc: "18;1 rate ×min(62.62, 1.05^n)" },
+  ];
+  function sdUpgCostLog(s, j) {
+    const T = E.TUNE;
+    const [f, st] = T.sdUpgCost[j];
+    return f + st * s.inf.stars.sdU[j];
+  }
+  function canBuySdUpg(s, j) {
+    const T = E.TUNE;
+    return s.inf.upg['21;1'] && s.inf.stars.sdU[j] < T.sdUpgMax[j] && s.inf.stars.sdLog >= sdUpgCostLog(s, j);
+  }
+  function buySdUpg(s, j) {
+    if (!canBuySdUpg(s, j)) return false;
+    s.inf.stars.sdLog = E.logSub(s.inf.stars.sdLog, sdUpgCostLog(s, j));
+    s.inf.stars.sdU[j] += 1;
+    return true;
+  }
+  // Stardust pre-tick: accumulation (unshifted to front of PRE_FNS)
+  I.PRE_FNS.unshift((s, dt) => {
+    s.inf.stars.sdLog = E.logAdd(s.inf.stars.sdLog, sdRateLog(s) + Math.log10(dt));
+  });
+
   function postTick(s) {         // spec §2.1
     if (!E.isFixed(s) || !E.canInfinity(s)) return;
     if (s.infinities === 0 || s.inf.auto.confirmInfinity) { s.inf.pendingConfirm = true; return; }
@@ -1434,6 +1513,8 @@ if (typeof module !== 'undefined' && module.exports) {
     GEN_COUNT, genCostLog, canBuyGen, buyGen, genMultLog, genSoftcap, gpExp, gpMultLog,
     UPGRADES, upgById, hasUpg, upgReqMet, canBuyUpgrade, buyUpgrade, upgEffect, ctf, passiveInfRate, sdU4Mult,
     CHALLENGES, canStartChallenge, startChallenge, exitChallenge, canBreak, setBroken,
+    starCostLog, canBuyStar, buyStar, starBaseCostLog, buyStarBase, starExpCostLog, buyStarExp,
+    sdRateLog, starGpLog, SD_UPGRADES, sdUpgCostLog, canBuySdUpg, buySdUpg,
   });
 })(typeof module !== 'undefined' && module.exports ? require('./engine.js') : window.Engine);
 </script>
