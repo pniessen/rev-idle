@@ -678,19 +678,15 @@ test('simulate reports IP, Infinities and completed challenges', () => {
 
 const trackMk = () => { const s = autoState('1;1', '2;2', '3;1', '3;2', '4;1', '5;3'); s.infinities = 8; return s; };
 
-// Ruling (task 10, fix round 2): at the UI's offline step (dtMin 0.5) the
-// time to the first Infinity must be within 15% of active play (spec §13
-// OFFLINE ±15%) and the Infinity count must be equal; bestScoreLog is only
-// compared when it is not pinned at the Infinity cap. Marked todo: it FAILS
-// with the spec §9.1 step rule — measured 356.9 s vs 242.6 s (+47%),
-// infinities 9 vs 10. The shortfall comes from the coarse step at the start
-// of every run (each prestige resets tRun, so dt = dtMin for the fastest
-// part of the run), not from autobuy. Needs a ruling; see task-10 report.
-test('offline automation tracks active play at the offline (coarse) step', {
-  todo: 'dtMin 0.5: first Infinity 356.9 s vs 242.6 s active (+47%); needs a step-rule ruling (task-10 report)',
-}, () => {
+// Ruling (task 10, fix round 3): offline catch-up uses the DEFAULT dtMin
+// (0.1); the UI chunks it across frames. Time to the first Infinity must be
+// within 15% of active play (spec §13 OFFLINE ±15%) and the Infinity count
+// must be equal; bestScoreLog is only compared when not pinned at the cap.
+// (dtMin 0.5 is still accepted as an opts override but is not tracking-
+// tested: it lags ~47% because every reset restarts the run at dt = dtMin.)
+test('offline automation tracks active play (first Infinity, Infinity count)', () => {
   const a = trackMk(), b = trackMk();
-  E.simulate(a, 600, { dtMin: 0.5 });
+  E.simulate(a, 600);
   for (let i = 0; i < 6000; i++) E.tick(b, 0.1);
   assert.ok(b.stats.fastestInfinity !== null, 'active run reached Infinity');
   assert.ok(a.stats.fastestInfinity !== null, 'offline run reached Infinity');
@@ -712,12 +708,24 @@ test('offline automation tracks active play at the default step', () => {
   assert.ok(Math.abs(a.stats.bestScoreLog - b.stats.bestScoreLog) <= 1, `best ${a.stats.bestScoreLog} vs ${b.stats.bestScoreLog}`);
 });
 
-// Spec §9.1 budget is 3 s; the Node target is 2.5 s to leave margin for
-// slower browser engines (ruling, task 10 fix round 2).
-test('8 h offline with automation stays within the 3 s budget (2.5 s in Node)', () => {
-  const s = autoState('1;1', '2;2', '3;1', '3;2', '4;1', '5;3'); s.infinities = 8;
-  const t0 = Date.now(); E.simulate(s, 8 * 3600, { dtMin: 0.5 }); const ms = Date.now() - t0;
-  assert.ok(ms <= 2500, `took ${ms} ms`);
+// Ruling (fix round 3): the UI runs offline catch-up in chunks across
+// animation frames, so one simulate call no longer has a 3 s budget. This is
+// only a sanity bound for 8 h at the default step.
+test('8 h offline with automation at the default step completes in <= 6 s (Node)', () => {
+  const s = trackMk();
+  const t0 = Date.now(); E.simulate(s, 8 * 3600); const ms = Date.now() - t0;
+  assert.ok(ms <= 6000, `took ${ms} ms`);
+});
+
+test('offline catch-up in 96 chunks of 300 s equals one 8 h simulate', () => {
+  const a = trackMk(), b = structuredClone(a);
+  E.simulate(a, 8 * 3600);
+  for (let i = 0; i < 96; i++) E.simulate(b, 300);
+  assert.ok(a.infinities > 8, 'made progress');
+  assert.equal(b.infinities, a.infinities);
+  assert.ok(Math.abs(b.stats.fastestInfinity / a.stats.fastestInfinity - 1) <= 0.05, `fastest ${b.stats.fastestInfinity} vs ${a.stats.fastestInfinity}`);
+  assert.deepEqual(b.inf.ic.done, a.inf.ic.done);
+  assert.ok(Math.abs(b.inf.ipLog - a.inf.ipLog) <= 0.5, `ipLog ${b.inf.ipLog} vs ${a.inf.ipLog}`);
 });
 
 // Deferred review item #3: generator (and score) production use explicit
