@@ -271,3 +271,58 @@ test('resetForChallenge resets the run without reward', () => {
   assert.equal(s.scoreLog, -Infinity); assert.equal(s.pMult, 1); assert.equal(s.inf.ipLog, 1);
   assert.equal(s.infinities, 0); assert.equal(s.inf.t, 0);
 });
+
+const withGens = (s) => { s.inf.upg['1;1'] = true; s.inf.gens[0] = { b: 1, aLog: 0 }; return s; };
+
+test('generator costs follow the table', () => {
+  const s = withGens(E.newState());
+  close(E.genCostLog(s, 0), Math.log10(32));
+  s.inf.gens[0].b = 3; close(E.genCostLog(s, 0), Math.log10(32 * 25), 1e-5);
+  close(E.genCostLog(s, 1), Math.log10(150), 1e-5);
+  s.inf.gens[1].b = 2; close(E.genCostLog(s, 1), Math.log10(15000), 1e-5);
+  close(E.genCostLog(s, 2), 5); close(E.genCostLog(s, 3), 9);
+  close(E.genCostLog(s, 4), 15); s.inf.gens[4].b = 1; close(E.genCostLog(s, 4), 19);
+  close(E.genCostLog(s, 9), 45);
+});
+
+test('buyGen needs 1;1, the previous tier and IP', () => {
+  const n = E.newState(); n.inf.ipLog = 5; assert.ok(!E.canBuyGen(n, 0));
+  const s = withGens(E.newState()); s.inf.ipLog = Math.log10(200);
+  assert.ok(!E.canBuyGen(s, 2));
+  assert.ok(E.buyGen(s, 1));
+  close(s.inf.ipLog, Math.log10(50), 1e-5); assert.equal(s.inf.gens[1].b, 1); close(s.inf.gens[1].aLog, 0);
+  assert.ok(E.canBuyGen(s, 0)); assert.ok(!E.canBuyGen(s, 1));
+});
+
+test('generator mult: x2 per purchase; 1;1 gives G1 x Infinities', () => {
+  const s = withGens(E.newState()); s.infinities = 8;
+  close(E.genMultLog(s, 0), Math.log10(8));
+  s.inf.gens[0].b = 3; close(E.genMultLog(s, 0), Math.log10(8) + 2 * Math.log10(2));
+  s.inf.gens[1].b = 1; close(E.genMultLog(s, 1), 0);
+});
+
+test('genSoftcap is continuous at 1000', () => {
+  assert.equal(E.genSoftcap(999), 999); assert.equal(E.genSoftcap(1000), 1000); close(E.genSoftcap(4000), 2000);
+});
+
+test('G1 alone: GP = a * m * t', () => {
+  const s = withGens(E.newState()); s.infinities = 1;
+  for (let i = 0; i < 100; i++) E.tick(s, 0.1);
+  close(10 ** s.inf.gpLog, 10, 1e-6);
+});
+
+test('two tiers: G2 feeds G1', () => {
+  const s = withGens(E.newState()); s.infinities = 1; s.inf.gens[1] = { b: 1, aLog: 0 };
+  for (let i = 0; i < 1000; i++) E.tick(s, 0.001);
+  close(10 ** s.inf.gens[0].aLog, 2, 1e-6);
+  close(10 ** s.inf.gpLog, 1.5, 1e-3);
+});
+
+test('GP multiplies mult gain by GP^0.666 (wiki: GP 16 -> ~6.35)', () => {
+  const s = withGens(E.newState()); s.inf.gpLog = Math.log10(16);
+  close(E.gpExp(s), 0.666);
+  close(10 ** E.gpMultLog(s), Math.pow(16, 0.666));
+  assert.ok(Math.abs(10 ** E.gpMultLog(s) - 6.35) < 0.02);
+  close(E.multGainPerLapLog(s, 0), E.TUNE.multGainLog0 + E.gpMultLog(s));
+  s.inf.gpLog = -2; assert.equal(E.gpMultLog(s), 0);
+});

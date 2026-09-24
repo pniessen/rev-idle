@@ -1039,7 +1039,12 @@ if (typeof module !== 'undefined' && module.exports) {
   E._inf = { LOG2 }; // internal scratch shared by later sections of this file
 
   Object.assign(E.TUNE, { ipBase: 1, breakStartLog: 2772, breakStepLog: 308 });
-  const I = E._inf; I.MOD_FNS = []; I.IP_FNS = []; I.PRE_FNS = []; I.GEN_FNS = [];
+  Object.assign(E.TUNE, {
+    genRate: 1, gpExp0: 0.666, genSoftcapLog: 1000,
+    genCost: [[Math.log10(32), Math.log10(5)], [Math.log10(150), 1], [5, 2], [9, 3], [15, 4], [21, 5], [27, 6], [33, 7], [39, 8], [45, 9]],
+  });
+  const I = E._inf; I.MOD_FNS = []; I.IP_FNS = []; I.PRE_FNS = []; I.GEN_FNS = []; I.GPEXP_FNS = [];
+  I.starGpLog = () => 0; // Task 9 replaces this
 
   function mods(s) {
     const d = E.DEFAULT_MODS;
@@ -1061,6 +1066,69 @@ if (typeof module !== 'undefined' && module.exports) {
     for (const f of I.IP_FNS) g += f(s);
     return g;
   }
+  const GEN_COUNT = 10;
+  function genCostLog(s, k) {
+    const [f, st] = E.TUNE.genCost[k];
+    const p = k === 0 ? s.inf.gens[0].b - 1 : s.inf.gens[k].b;
+    return f + st * p;
+  }
+  function canBuyGen(s, k) {
+    if (!s.inf.upg['1;1']) return false;
+    if (k !== 0 && s.inf.gens[k - 1].b < 1) return false;
+    return s.inf.ipLog >= genCostLog(s, k);
+  }
+  function buyGen(s, k) {
+    if (!canBuyGen(s, k)) return false;
+    const cost = genCostLog(s, k);
+    s.inf.ipLog = E.logSub(s.inf.ipLog, cost);
+    const g = s.inf.gens[k];
+    g.b += 1;
+    g.aLog = E.logAdd(g.aLog, 0);
+    return true;
+  }
+  function genMultLog(s, k) {
+    const g = s.inf.gens[k];
+    let L = LOG2 * Math.max(0, g.b - 1) + Math.log10(E.TUNE.genRate);
+    if (s.inf.upg['1;1'] && k <= s.inf.stars.sdU[0]) L += Math.log10(Math.max(1, s.infinities));
+    for (const f of I.GEN_FNS) L += f(s, k);
+    return genSoftcap(L);
+  }
+  function genSoftcap(L) {
+    const T = E.TUNE;
+    return L <= T.genSoftcapLog ? L : T.genSoftcapLog * Math.sqrt(L / T.genSoftcapLog);
+  }
+  function gpExp(s) {
+    let best = E.TUNE.gpExp0;
+    for (const f of I.GPEXP_FNS) {
+      const v = f(s);
+      if (v !== null && v !== undefined && v > best) best = v;
+    }
+    return best;
+  }
+  function gpMultLog(s) {
+    return gpExp(s) * Math.max(0, s.inf.gpLog);
+  }
+  function genProductionPreTick(s, dt, m) {
+    const f = s.inf;
+    const dtLog = Math.log10(dt);
+    const M = [];
+    for (let k = 0; k < GEN_COUNT; k++) M[k] = genMultLog(s, k);
+    let newGp = f.gpLog;
+    if (f.gens[0] && f.gens[0].aLog !== -Infinity) {
+      newGp = E.logAdd(newGp, f.gens[0].aLog + M[0] + I.starGpLog(s) + dtLog);
+    }
+    const newA = f.gens.map((g) => g.aLog);
+    for (let k = 0; k < GEN_COUNT - 1; k++) {
+      const src = f.gens[k + 1];
+      if (src && src.aLog !== -Infinity) {
+        newA[k] = E.logAdd(newA[k], src.aLog + M[k + 1] + dtLog);
+      }
+    }
+    f.gpLog = newGp;
+    for (let k = 0; k < GEN_COUNT; k++) f.gens[k].aLog = newA[k];
+  }
+  I.PRE_FNS.push(genProductionPreTick);
+  I.MOD_FNS.push((s, m) => { if (s.inf.gpLog > 0) m.gainLog = gpMultLog(s); });
   function runReset(s) {         // spec §2.4 steps 4–5
     const keep = { stats: s.stats, infinities: s.infinities, inf: s.inf, savedAt: s.savedAt };
     Object.assign(s, E.newState(), keep);
@@ -1091,7 +1159,10 @@ if (typeof module !== 'undefined' && module.exports) {
   }
   function preTick(s, dt, m) { for (const f of I.PRE_FNS) f(s, dt, m); }
   E.registerHooks({ mods, preTick, postTick });
-  Object.assign(E, { goInfinite, resetForChallenge, icDoneCount, ipGainLog, infGain, breakBonusLog });
+  Object.assign(E, {
+    goInfinite, resetForChallenge, icDoneCount, ipGainLog, infGain, breakBonusLog,
+    GEN_COUNT, genCostLog, canBuyGen, buyGen, genMultLog, genSoftcap, gpExp, gpMultLog,
+  });
 })(typeof module !== 'undefined' && module.exports ? require('./engine.js') : window.Engine);
 </script>
 <script>// src/engine-auto.js — automation (autobuy, auto-ascend, auto-promote, auto-prestige, auto-infinity) and adaptive step size. Pure.
