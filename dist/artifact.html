@@ -532,6 +532,154 @@ textarea.save-area {
 .help-intro-actions {
   margin-top: 4px;
 }
+
+/* ---------- tab label / icon collapse (Stats, Settings < 420px) ---------- */
+
+.tab-icon {
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-icon svg { display: block; }
+
+@media (max-width: 419px) {
+  .tab-label { display: none; }
+  .tab-icon { display: inline-flex; }
+}
+
+/* ---------- catch-up overlay (offline / hidden-tab, non-blocking) ---------- */
+
+.progress-bar {
+  height: 10px;
+  margin: 14px 0 8px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.15s ease;
+}
+
+/* ---------- ∞ tab ---------- */
+
+.inf-header {
+  position: sticky;
+  top: -16px;
+  margin: -16px -16px 0;
+  padding: 12px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.inf-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sub-tab-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.inf-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.iu-col-label {
+  font-family: var(--font-mono);
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.iu-col.preview { opacity: 0.5; }
+
+.iu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.iu-card {
+  min-height: 40px;
+  min-width: 0;
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+  overflow-wrap: anywhere;
+}
+
+.iu-card.owned { border-color: var(--accent); }
+
+.iu-card.buyable {
+  cursor: pointer;
+  border-color: var(--accent);
+  box-shadow: 0 0 12px 2px var(--accent);
+}
+
+.iu-card.buyable:hover { box-shadow: 0 0 18px 3px var(--accent); }
+
+.iu-card.locked { opacity: 0.5; }
+
+.iu-cost, .iu-effect, .iu-locked {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.inf-gens {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gp-line { font-family: var(--font-mono); }
+
+.gen-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.gen-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.gen-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
 </style>
 
 <div id="app">
@@ -2414,10 +2562,79 @@ if (typeof module !== 'undefined' && module.exports) {
       return names[k] + ' — ' + about[k] + ' Promotion Power boosts the other three.';
     },
 
-    goInfinite: 'Score has exceeded what a number can hold. Going Infinite resets your progress and keeps 1 Infinity Point for a future update.',
+    goInfinite: function (s) {
+      return 'Go Infinite: gain +' + fmt(Engine.ipGainLog(s)) + ' IP and +' + Engine.infGain(s)
+        + ' Infinity, then restart the Revolution stage. Upgrades, generators and IP are kept.';
+    },
 
     helpBtn: 'How to play (key: ? or H).',
+
+    // ---- ∞ tab (Task 11) ----
+
+    ipHeader: function (s) {
+      return 'Infinity Points — earned each time you go Infinite. Next Infinity gives +'
+        + fmt(Engine.ipGainLog(s)) + ' IP. Spend IP on the Tree, Generators and Stars.';
+    },
+    infCount: function (s) {
+      return 'Infinities performed: ' + fmtInf(s.infinities) + '. Several upgrades grow stronger with more Infinities.';
+    },
+    iuCard: function (s, i) {
+      var u = Engine.UPGRADES[i];
+      if (!u) return '';
+      var owned = Engine.hasUpg(s, u.id);
+      var effect = Engine.upgEffect(s, u.id);
+      var status;
+      if (owned) {
+        status = effect === null ? 'Owned.' : 'Owned — currently ×' + fmtEffect(effect) + '.';
+      } else if (u.req === 'prev') {
+        status = 'Requires an earlier column’s upgrade.';
+      } else {
+        status = 'Requires ' + u.req.join(' or ') + '.';
+      }
+      var descText = u.desc.charAt(u.desc.length - 1) === '.' ? u.desc : (u.desc + '.');
+      return u.name + ' — ' + descText + ' Cost ' + fmt(Math.log10(u.cost)) + ' IP. ' + status;
+    },
+    gpLine: function (s) {
+      return 'Generator Power multiplies every ring’s mult gain per lap by GP^' + Engine.gpExp(s).toFixed(3)
+        + '. It resets each Infinity, so runs speed up as they go.';
+    },
+    genRow: function (s, k) {
+      var n = k + 1;
+      var g = s.inf.gens[k];
+      var target = n === 1 ? 'GP' : ('G' + (n - 1));
+      return 'G' + n + ': you have ' + fmt(g.aLog) + ' (' + g.b + ' bought). Each makes ×'
+        + fmt(Engine.genMultLog(s, k)) + ' ' + target + ' per second. Every purchase doubles its output.';
+    },
+    genBuy: function (s, k) {
+      var n = k + 1;
+      return 'Buy another G' + n + ' for ' + fmt(Engine.genCostLog(s, k))
+        + ' IP. Bought generators are kept through Infinity; produced ones are not.';
+    },
+    gpChip: function (s) {
+      return 'Generator Power boost to mult gain: ×' + fmt(Engine.gpMultLog(s)) + '.';
+    },
   };
+
+  // Formats a plain (non-log) multiplier/value for tooltip copy.
+  function fmtEffect(x) {
+    if (!isFinite(x)) return String(x);
+    if (x === 0) return '0';
+    var abs = Math.abs(x);
+    if (abs >= 1000 || abs < 0.001) return x.toExponential(2);
+    if (Math.abs(x - Math.round(x)) < 1e-9) return String(Math.round(x));
+    return x.toFixed(abs < 10 ? 3 : 2);
+  }
+
+  // Formats a plain (non-log) count such as state.infinities: usually an
+  // integer, but passive-Infinity upgrades (18;1) can make it fractional.
+  function fmtInf(n) {
+    var frac = Math.abs(n - Math.round(n)) > 1e-9;
+    try {
+      return n.toLocaleString('en-US', frac ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : {});
+    } catch (e) {
+      return String(n);
+    }
+  }
 
   function textForKey(key, i) {
     var entry = TIPS[key];
@@ -2737,6 +2954,22 @@ if (typeof module !== 'undefined' && module.exports) {
         hooks.toast('Infinity reached — hover Go Infinite for details.');
       }
     }
+    if (state.infinities >= 1) {
+      if (markSeen('infTabSeen')) {
+        hooks.toast('∞ tab unlocked — spend Infinity Points on upgrades.');
+      }
+    }
+    if (Engine.hasUpg(state, '1;1')) {
+      if (markSeen('gensSeen')) {
+        hooks.toast('Generators online — they build Generator Power, which boosts every ring’s mult gain.');
+      }
+    }
+    var auto = Engine.autoUnlocked(state);
+    if (auto.buy || auto.asc || auto.promote || auto.prestige || auto.infinity) {
+      if (markSeen('autoSeen')) {
+        hooks.toast('Automation unlocked — configure it in ∞ → Auto.');
+      }
+    }
   }
 
   window.Help = {
@@ -2747,15 +2980,391 @@ if (typeof module !== 'undefined' && module.exports) {
     refresh: refresh,
     showAt: showAt,
     hide: hide,
+    TIPS: TIPS,
   };
 })();
 </script>
-<script>// src/ui-infinity.js — the ∞ tab (Tree, Gens, Auto, ICs, Stars). DOM only via kit.el.
+<script>// src/ui-infinity.js — the ∞ tab (Tree, Gens, Auto, ICs, Stars). DOM only via
+// kit.el; reads state and Engine directly, never window/localStorage except
+// the try/catch-wrapped sub-tab preference below.
 (function () {
   'use strict';
+
+  var Engine = window.Engine;
+  var STORAGE_KEY = 'revidle.infTab';
+
+  var SUBTABS = [
+    { id: 'tree', label: 'Tree', visible: function () { return true; } },
+    { id: 'gens', label: 'Gens', visible: function (s) { return Engine.hasUpg(s, '1;1'); } },
+    { id: 'auto', label: 'Auto', visible: function (s) { return Engine.hasUpg(s, '1;1'); } },
+    { id: 'ics', label: 'ICs', visible: function (s) { return Engine.hasUpg(s, '7;1'); } },
+    { id: 'stars', label: 'Stars', visible: function (s) { return Engine.hasUpg(s, '21;1'); } },
+  ];
+
+  var subTab = loadSubTab();
+
+  function loadSubTab() {
+    try {
+      var v = localStorage.getItem(STORAGE_KEY);
+      if (v && SUBTABS.some(function (t) { return t.id === v; })) return v;
+    } catch (e) { /* ignore: sub-tab memory is best-effort */ }
+    return 'tree';
+  }
+
+  function saveSubTab(id) {
+    try { localStorage.setItem(STORAGE_KEY, id); } catch (e) { /* ignore */ }
+  }
+
+  function visibleSubTabs(state) {
+    return SUBTABS.filter(function (t) { return t.visible(state); });
+  }
+
+  // ---------- small formatters ----------
+
+  function fmt(x) {
+    return Engine.fmtLog(x);
+  }
+
+  // Formats a plain (non-log) count such as state.infinities: usually an
+  // integer, but passive-Infinity upgrades (18;1) can make it fractional.
+  function fmtInfNumber(n) {
+    var frac = Math.abs(n - Math.round(n)) > 1e-9;
+    try {
+      return n.toLocaleString('en-US', frac ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : {});
+    } catch (e) {
+      return String(n);
+    }
+  }
+
+  // Formats a plain (non-log) multiplier/value shown on a Tree card, e.g. the
+  // 1.1 in "Lap speed ×1.1" or the 32 in "×32".
+  function fmtNum(x) {
+    if (!isFinite(x)) return String(x);
+    if (x === 0) return '0';
+    var abs = Math.abs(x);
+    if (abs >= 1000 || abs < 0.001) return x.toExponential(2);
+    if (Math.abs(x - Math.round(x)) < 1e-9) return String(Math.round(x));
+    return x.toFixed(abs < 10 ? 3 : 2);
+  }
+
+  // ---------- header ----------
+
+  function ipLineText(state) {
+    return 'IP ' + fmt(state.inf.ipLog) + ' · +' + fmt(Engine.ipGainLog(state)) + ' next';
+  }
+
+  function infLineText(state) {
+    return '∞ ' + fmtInfNumber(state.infinities);
+  }
+
+  function renderHeader(kit, state) {
+    return kit.el('div', { id: 'inf-header', class: 'inf-header' }, [
+      kit.el('span', { class: 'inf-ip', tabindex: '0', 'data-tip': 'ipHeader' }, [ipLineText(state)]),
+      kit.el('span', {}, [' · ']),
+      kit.el('span', { class: 'inf-count', tabindex: '0', 'data-tip': 'infCount' }, [infLineText(state)]),
+    ]);
+  }
+
+  function updateHeader(header, state) {
+    var ipSpan = header.querySelector('.inf-ip');
+    if (ipSpan) ipSpan.textContent = ipLineText(state);
+    var cntSpan = header.querySelector('.inf-count');
+    if (cntSpan) cntSpan.textContent = infLineText(state);
+  }
+
+  // ---------- sub-tab row ----------
+
+  function renderSubTabRow(kit, state, container) {
+    var vis = visibleSubTabs(state);
+    if (vis.map(function (t) { return t.id; }).indexOf(subTab) === -1) subTab = 'tree';
+    var row = kit.el('div', { class: 'inf-subtabs', role: 'tablist' });
+    vis.forEach(function (t) {
+      var btn = kit.el('button', {
+        class: 'tab-btn sub-tab-btn',
+        role: 'tab',
+        'aria-selected': String(t.id === subTab),
+        onclick: function () {
+          if (subTab === t.id) return;
+          subTab = t.id;
+          saveSubTab(t.id);
+          render(container, state, kit);
+        },
+      }, [t.label]);
+      row.appendChild(btn);
+    });
+    return row;
+  }
+
+  // ---------- Tree ----------
+
+  function columnsOf(upgrades) {
+    var cols = [];
+    upgrades.forEach(function (u) { if (cols.indexOf(u.col) === -1) cols.push(u.col); });
+    cols.sort(function (a, b) { return a - b; });
+    return cols;
+  }
+
+  function prevColOf(cols, col) {
+    var best = null;
+    for (var i = 0; i < cols.length; i++) {
+      if (cols[i] < col) best = cols[i];
+      else break;
+    }
+    return best;
+  }
+
+  // Every column up to and including the first column with no owned node,
+  // plus one dimmed preview column after it (per the Task 11 brief).
+  function revealColumns(state, cols) {
+    var firstEmptyIdx = -1;
+    for (var i = 0; i < cols.length; i++) {
+      var col = cols[i];
+      var owned = Engine.UPGRADES.some(function (u) { return u.col === col && Engine.hasUpg(state, u.id); });
+      if (!owned) { firstEmptyIdx = i; break; }
+    }
+    if (firstEmptyIdx === -1) return { shown: cols.slice(), previewCol: null };
+    var shown = cols.slice(0, firstEmptyIdx + 1);
+    var previewCol = firstEmptyIdx + 1 < cols.length ? cols[firstEmptyIdx + 1] : null;
+    if (previewCol !== null) shown.push(previewCol);
+    return { shown: shown, previewCol: previewCol };
+  }
+
+  function lockedText(cols, u) {
+    if (u.req === 'prev') {
+      var pc = prevColOf(cols, u.col);
+      return pc === null ? 'Needs an earlier upgrade' : 'Needs a C' + pc + ' upgrade';
+    }
+    return 'Needs ' + u.req.join(' or ');
+  }
+
+  function buildCard(kit, state, cols, u, idx, dimmed) {
+    var owned = Engine.hasUpg(state, u.id);
+    var buyable = !owned && Engine.canBuyUpgrade(state, u.id);
+    var effect = Engine.upgEffect(state, u.id);
+    var stateCls = owned ? 'owned' : buyable ? 'buyable' : 'locked';
+
+    var kids = [
+      kit.el('div', { class: 'card-title' }, [u.name]),
+      kit.el('div', { class: 'iu-cost' }, [fmt(Math.log10(u.cost)) + ' IP']),
+      kit.el('div', { class: 'iu-effect' }, [u.desc + (effect !== null ? (' · now ×' + fmtNum(effect)) : '')]),
+    ];
+    if (!owned && !buyable) {
+      kids.push(kit.el('div', { class: 'iu-locked' }, [lockedText(cols, u)]));
+    }
+
+    var attrs = {
+      class: 'card iu-card ' + stateCls + (dimmed ? ' preview' : ''),
+      'data-tip': 'iuCard',
+      'data-tip-i': String(idx),
+      'data-id': u.id,
+      tabindex: '0',
+    };
+
+    if (buyable) {
+      var btn = kit.el('button', attrs, kids);
+      btn.addEventListener('click', function () {
+        if (Engine.buyUpgrade(state, u.id)) {
+          kit.markDirty();
+          kit.save();
+        }
+      });
+      return btn;
+    }
+    return kit.el('div', attrs, kids);
+  }
+
+  function renderTree(kit, state) {
+    var cols = columnsOf(Engine.UPGRADES);
+    var reveal = revealColumns(state, cols);
+    var wrap = kit.el('div', { class: 'inf-tree' });
+    reveal.shown.forEach(function (col) {
+      var dimmed = col === reveal.previewCol;
+      var grid = kit.el('div', { class: 'iu-grid' });
+      Engine.UPGRADES.forEach(function (u, idx) {
+        if (u.col !== col) return;
+        grid.appendChild(buildCard(kit, state, cols, u, idx, dimmed));
+      });
+      wrap.appendChild(kit.el('div', { class: 'iu-col' + (dimmed ? ' preview' : ''), 'data-col': String(col) }, [
+        kit.el('div', { class: 'iu-col-label' }, ['C' + col]),
+        grid,
+      ]));
+    });
+    return wrap;
+  }
+
+  // Patches card text in place; only asks for a full re-render (via
+  // kit.markDirty, which the outer tab dispatch honors on the next domUpdate)
+  // when a card's owned/buyable/locked state — or the revealed column set —
+  // actually changed, since those need different DOM structure (only a
+  // buyable card is a <button>) or a different set of columns.
+  function updateTree(root, kit, state) {
+    var needsRebuild = false;
+    var cards = root.querySelectorAll('.iu-card');
+    for (var i = 0; i < cards.length; i++) {
+      var node = cards[i];
+      var id = node.getAttribute('data-id');
+      var u = Engine.upgById(id);
+      if (!u) continue;
+      var owned = Engine.hasUpg(state, id);
+      var buyable = !owned && Engine.canBuyUpgrade(state, id);
+      if (owned !== node.classList.contains('owned') || buyable !== node.classList.contains('buyable')) {
+        needsRebuild = true;
+        break;
+      }
+      var effect = Engine.upgEffect(state, id);
+      var effLine = node.querySelector('.iu-effect');
+      if (effLine) effLine.textContent = u.desc + (effect !== null ? (' · now ×' + fmtNum(effect)) : '');
+    }
+    if (!needsRebuild) {
+      var cols = columnsOf(Engine.UPGRADES);
+      var reveal = revealColumns(state, cols);
+      var shownCols = Array.prototype.map.call(root.querySelectorAll('.iu-col'), function (n) {
+        return Number(n.getAttribute('data-col'));
+      });
+      if (shownCols.length !== reveal.shown.length
+        || shownCols.some(function (c, idx) { return c !== reveal.shown[idx]; })) {
+        needsRebuild = true;
+      }
+    }
+    if (needsRebuild) kit.markDirty();
+  }
+
+  // ---------- Gens ----------
+
+  function highestBoughtTier(state) {
+    var h = 0;
+    for (var k = 0; k < Engine.GEN_COUNT; k++) {
+      if (state.inf.gens[k].b > 0) h = k + 1;
+    }
+    return h;
+  }
+
+  function visibleGenCount(state) {
+    return Math.min(10, highestBoughtTier(state) + 1);
+  }
+
+  // The log10 rate this generator currently produces: G(k+1) feeds G(k), and
+  // G1 (k=0) feeds Generator Power (plus any Star bonus to that GP feed).
+  function genRateLog(state, k) {
+    var g = state.inf.gens[k];
+    if (g.aLog === -Infinity) return -Infinity;
+    var L = g.aLog + Engine.genMultLog(state, k);
+    if (k === 0 && typeof Engine.starGpLog === 'function') L += Engine.starGpLog(state);
+    return L;
+  }
+
+  function gpLineText(state) {
+    return 'GP ' + fmt(state.inf.gpLog) + ' → Mult Gain ×' + fmt(Engine.gpMultLog(state))
+      + ' (^' + Engine.gpExp(state).toFixed(3) + ')';
+  }
+
+  function buildGenRow(kit, state, k) {
+    var n = k + 1;
+    var row = kit.el('div', {
+      class: 'gen-row', 'data-k': String(k), tabindex: '0', 'data-tip': 'genRow', 'data-tip-i': String(k),
+    }, [
+      kit.el('div', { class: 'gen-name' }, ['G' + n]),
+      kit.el('div', { class: 'gen-meta' }, [
+        kit.el('span', { class: 'gen-amount' }, [fmt(state.inf.gens[k].aLog)]),
+        kit.el('span', { class: 'gen-mult' }, ['×' + fmt(Engine.genMultLog(state, k))]),
+        kit.el('span', { class: 'gen-rate' }, ['+' + fmt(genRateLog(state, k)) + '/s']),
+      ]),
+    ]);
+    var buyBtn = kit.el('button', {
+      class: 'btn gen-buy', 'data-tip': 'genBuy', 'data-tip-i': String(k),
+    }, [fmt(Engine.genCostLog(state, k)) + ' IP']);
+    buyBtn.disabled = !Engine.canBuyGen(state, k);
+    buyBtn.addEventListener('click', function () {
+      if (Engine.buyGen(state, k)) {
+        kit.markDirty();
+        kit.save();
+      }
+    });
+    row.appendChild(buyBtn);
+    return row;
+  }
+
+  function renderGens(kit, state) {
+    var wrap = kit.el('div', { class: 'inf-gens' });
+    wrap.appendChild(kit.el('div', { class: 'stat-line gp-line', tabindex: '0', 'data-tip': 'gpLine' }, [
+      kit.el('span', { id: 'gp-line-value' }, [gpLineText(state)]),
+    ]));
+
+    var count = visibleGenCount(state);
+    var maxMult = -Infinity;
+    for (var k = 0; k < count; k++) {
+      wrap.appendChild(buildGenRow(kit, state, k));
+      maxMult = Math.max(maxMult, Engine.genMultLog(state, k));
+    }
+    if (maxMult >= 1000) {
+      wrap.appendChild(kit.el('p', { class: 'help' }, ['Generator Mult softcapped above e1,000']));
+    }
+    return wrap;
+  }
+
+  function updateGens(root, kit, state) {
+    var gpValue = root.querySelector('#gp-line-value');
+    if (gpValue) gpValue.textContent = gpLineText(state);
+
+    var rows = root.querySelectorAll('.gen-row');
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var k = Number(row.getAttribute('data-k'));
+      var amt = row.querySelector('.gen-amount');
+      if (amt) amt.textContent = fmt(state.inf.gens[k].aLog);
+      var multEl = row.querySelector('.gen-mult');
+      if (multEl) multEl.textContent = '×' + fmt(Engine.genMultLog(state, k));
+      var rateEl = row.querySelector('.gen-rate');
+      if (rateEl) rateEl.textContent = '+' + fmt(genRateLog(state, k)) + '/s';
+      var buyBtn = row.querySelector('.gen-buy');
+      if (buyBtn) {
+        buyBtn.textContent = fmt(Engine.genCostLog(state, k)) + ' IP';
+        buyBtn.disabled = !Engine.canBuyGen(state, k);
+      }
+    }
+    if (rows.length !== visibleGenCount(state)) kit.markDirty();
+  }
+
+  // ---------- Auto / ICs / Stars (placeholders until Task 12) ----------
+
+  function renderComingSoon(kit) {
+    return kit.el('div', { class: 'inf-coming-soon' }, [
+      kit.el('p', { class: 'help' }, ['Coming in Task 12']),
+    ]);
+  }
+
+  // ---------- tab dispatch ----------
+
+  function renderBody(kit, state) {
+    if (subTab === 'gens') return renderGens(kit, state);
+    if (subTab === 'tree') return renderTree(kit, state);
+    return renderComingSoon(kit);
+  }
+
+  function render(container, state, kit) {
+    container.innerHTML = '';
+    var wrap = kit.el('div', { class: 'tab-body-inner inf-tab' });
+    wrap.appendChild(renderHeader(kit, state));
+    wrap.appendChild(renderSubTabRow(kit, state, container));
+    wrap.appendChild(kit.el('div', { id: 'inf-subbody' }, [renderBody(kit, state)]));
+    container.appendChild(wrap);
+  }
+
+  function update(container, state, kit) {
+    var header = container.querySelector('#inf-header');
+    var body = container.querySelector('#inf-subbody');
+    if (!header || !body) {
+      render(container, state, kit);
+      return;
+    }
+    updateHeader(header, state);
+    if (subTab === 'tree') updateTree(body, kit, state);
+    else if (subTab === 'gens') updateGens(body, kit, state);
+  }
+
   window.InfinityUI = {
-    render: function (container, state, kit) {},
-    update: function (container, state, kit) {},
+    render: render,
+    update: update,
   };
 })();
 </script>
@@ -2803,9 +3412,19 @@ if (typeof module !== 'undefined' && module.exports) {
         return false;
       },
     },
+    {
+      id: 'infinity',
+      label: '∞',
+      visible: function (s) { return s.infinities >= 1 || s.inf.ipLog > -Infinity; },
+    },
     { id: 'stats', label: 'Stats', visible: function () { return true; } },
     { id: 'settings', label: 'Settings', visible: function () { return true; } },
   ];
+
+  var ICONS = {
+    stats: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>',
+    settings: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  };
 
   var PROMO_META = [
     { key: 'p1', name: 'Mult Gain' },
@@ -2822,6 +3441,18 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function fmt(x) {
     return Engine.fmtLog(x);
+  }
+
+  // Formats a plain (non-log) count such as state.infinities: an integer
+  // most of the time, but passive-Infinity upgrades (18;1) can make it
+  // fractional, so it gets 2 decimals only then.
+  function fmtInf(n) {
+    var frac = Math.abs(n - Math.round(n)) > 1e-9;
+    try {
+      return n.toLocaleString('en-US', frac ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : {});
+    } catch (e) {
+      return String(n);
+    }
   }
 
   function el(tag, attrs, children) {
@@ -2920,8 +3551,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function showOfflineModal(info) {
     modalOpen = 'offline';
     var gainLog = info.before === -Infinity ? info.after : Engine.logSub(info.after, info.before);
-    var panel = el('div', { class: 'modal-panel' }, [
-      el('h2', { class: 'modal-title' }, ['While you were away']),
+    var lines = [
       el('p', { class: 'help' }, [
         'You were gone for ' + fmtTime(info.seconds) + '.',
       ]),
@@ -2929,14 +3559,33 @@ if (typeof module !== 'undefined' && module.exports) {
         el('span', { class: 'label' }, ['Score gained']),
         el('span', {}, [fmt(gainLog)]),
       ]),
-      el('button', { class: 'btn primary full-width', onclick: hideModal }, ['Continue']),
-    ]);
+    ];
+    if (info.ipGainedLog !== undefined && info.ipGainedLog !== -Infinity) {
+      lines.push(el('p', { class: 'stat-line' }, [
+        el('span', { class: 'label' }, ['IP gained']),
+        el('span', {}, ['+' + fmt(info.ipGainedLog)]),
+      ]));
+    }
+    if (info.infinitiesGained) {
+      lines.push(el('p', { class: 'stat-line' }, [
+        el('span', { class: 'label' }, ['Infinities']),
+        el('span', {}, ['+' + fmtInf(info.infinitiesGained)]),
+      ]));
+    }
+    if (info.icCompleted && info.icCompleted.length) {
+      info.icCompleted.forEach(function (n) {
+        lines.push(el('p', { class: 'help' }, ['Challenge ' + n + ' completed']));
+      });
+    }
+    var panel = el('div', { class: 'modal-panel' },
+      [el('h2', { class: 'modal-title' }, ['While you were away'])]
+        .concat(lines)
+        .concat([el('button', { class: 'btn primary full-width', onclick: hideModal }, ['Continue'])]));
     showModal(panel);
   }
 
   function doGoInfinite() {
     if (Engine.goInfinite(state)) {
-      toast('Infinity reached \u2014 welcome back');
       hideModal();
       markDirty();
     }
@@ -2945,23 +3594,38 @@ if (typeof module !== 'undefined' && module.exports) {
   function showInfinityModal() {
     modalOpen = 'infinity';
     var s = state.stats;
-    var panel = el('div', { class: 'modal-panel' }, [
-      el('h2', { class: 'modal-title' }, ['Infinity reached']),
-      el('p', { class: 'help' }, [
-        'Score has exceeded what a number can hold. Going infinite resets your ' +
-          'progress and keeps 1 Infinity Point (IP) for a future update.',
-      ]),
-      el('div', { class: 'kv-list' }, [
-        statLine('Play time', fmtTime(s.playTime)),
-        statLine('Total laps', String(s.totalLaps)),
-        statLine('Prestiges', String(s.prestiges)),
-        statLine('Promotions', String(s.promotions)),
-      ]),
-      el('button', {
-        class: 'btn primary full-width',
-        onclick: doGoInfinite,
-      }, ['Go Infinite']),
-    ]);
+    var isFirst = state.infinities === 0;
+    var panel;
+    if (isFirst) {
+      panel = el('div', { class: 'modal-panel' }, [
+        el('h2', { class: 'modal-title' }, ['Infinity reached']),
+        el('p', { class: 'help' }, [
+          'You gained 1 Infinity Point. Spend it in the new \u221e tab.',
+        ]),
+        el('button', {
+          class: 'btn primary full-width',
+          onclick: doGoInfinite,
+        }, ['Go Infinite']),
+      ]);
+    } else {
+      panel = el('div', { class: 'modal-panel' }, [
+        el('h2', { class: 'modal-title' }, ['Infinity reached']),
+        el('p', { class: 'help' }, [
+          'Score has exceeded what a number can hold. Going infinite resets your ' +
+            'progress and keeps your upgrades, generators and Infinity Points.',
+        ]),
+        el('div', { class: 'kv-list' }, [
+          statLine('Play time', fmtTime(s.playTime)),
+          statLine('Total laps', String(s.totalLaps)),
+          statLine('Prestiges', String(s.prestiges)),
+          statLine('Promotions', String(s.promotions)),
+        ]),
+        el('button', {
+          class: 'btn primary full-width',
+          onclick: doGoInfinite,
+        }, ['Go Infinite']),
+      ]);
+    }
     showModal(panel);
   }
 
@@ -2971,6 +3635,18 @@ if (typeof module !== 'undefined' && module.exports) {
       el('span', {}, [value]),
     ]);
   }
+
+  // Passed to InfinityUI so src/ui-infinity.js never touches window.Engine
+  // for anything DOM/save-related; it only reads state and calls these.
+  var kit = {
+    el: el,
+    fmt: fmt,
+    toast: function (msg) { toast(msg); },
+    twoStepConfirm: function (btn, label, confirmLabel, action) { twoStepConfirm(btn, label, confirmLabel, action); },
+    statLine: statLine,
+    markDirty: function () { markDirty(); },
+    save: function () { save(); },
+  };
 
   // ---------- multbar ----------
 
@@ -2995,6 +3671,9 @@ if (typeof module !== 'undefined' && module.exports) {
     frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'pMultChip', tabindex: '0' }, ['P \u00D7' + fmt(Math.log10(state.pMult))]));
     if (state.pExp > 1) {
       frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'pExpChip', tabindex: '0' }, ['^' + state.pExp.toFixed(3)]));
+    }
+    if (state.inf.gpLog > 0) {
+      frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'gpChip', tabindex: '0' }, ['GP ×' + fmt(Engine.gpMultLog(state))]));
     }
     if (state.infinities > 0) {
       frag.appendChild(el('span', { class: 'chip grey' }, ['\u221E ' + state.infinities]));
@@ -3029,13 +3708,26 @@ if (typeof module !== 'undefined' && module.exports) {
     var visible = computeVisibleTabs();
     els.tabs.innerHTML = '';
     visible.forEach(function (t) {
-      var btn = el('button', {
+      var attrs = {
         class: 'tab-btn',
         role: 'tab',
         'aria-selected': String(t.id === currentTab),
         onclick: function () { location.hash = '#' + t.id; },
-      }, [t.label]);
-      els.tabs.appendChild(btn);
+      };
+      // Only Stats/Settings get the label/icon pair the <420px media query
+      // swaps between; other tabs keep a plain text child so that query
+      // (which only targets .tab-label/.tab-icon) never touches them.
+      var kids;
+      if (ICONS[t.id]) {
+        attrs['aria-label'] = t.label;
+        kids = [
+          el('span', { class: 'tab-label' }, [t.label]),
+          el('span', { class: 'tab-icon', 'aria-hidden': 'true', html: ICONS[t.id] }),
+        ];
+      } else {
+        kids = [t.label];
+      }
+      els.tabs.appendChild(el('button', attrs, kids));
     });
   }
 
@@ -3398,6 +4090,7 @@ if (typeof module !== 'undefined' && module.exports) {
       try {
         var loaded = Engine.deserialize(importArea.value.trim());
         state = loaded;
+        lastKnownInfinities = state.infinities;
         importErr.textContent = '';
         markDirty();
         toast('Save loaded');
@@ -3414,6 +4107,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var resetBtn = el('button', { class: 'btn full-width' });
     twoStepConfirm(resetBtn, 'Hard reset', 'Confirm reset?', function () {
       state = Engine.newState();
+      lastKnownInfinities = state.infinities;
       try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
       markDirty();
       toast('Progress reset');
@@ -3431,6 +4125,7 @@ if (typeof module !== 'undefined' && module.exports) {
     circles: renderCirclesTab,
     prestige: renderPrestigeTab,
     promote: renderPromoteTab,
+    infinity: function (root) { if (window.InfinityUI) window.InfinityUI.render(root, state, kit); },
     stats: renderStatsTab,
     settings: renderSettingsTab,
   };
@@ -3439,6 +4134,7 @@ if (typeof module !== 'undefined' && module.exports) {
     circles: updateCirclesTab,
     prestige: updatePrestigeTab,
     promote: updatePromoteTab,
+    infinity: function (root) { if (window.InfinityUI) window.InfinityUI.update(root, state, kit); },
     stats: updateStatsTab,
     settings: function () {},
   };
@@ -3507,12 +4203,139 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // ---------- infinity check ----------
 
+  var lastKnownInfinities = 0;
+
   function checkInfinity() {
     var can = Engine.canInfinity(state);
     if (els.infinityBtn) els.infinityBtn.style.display = can ? '' : 'none';
-    if (can && !modalOpen) {
+    if (state.inf.pendingConfirm && !modalOpen) {
       showInfinityModal();
     }
+  }
+
+  // Fires for both the automatic path (postTick calls goInfinite directly,
+  // with no modal) and the confirmed path (the modal's button calls
+  // goInfinite then hides itself) — either way, by the next domUpdate the
+  // count is up and no modal is open, which is exactly the condition the
+  // brief specifies.
+  function checkInfinityToast() {
+    if (modalOpen) return;
+    if (state.infinities > lastKnownInfinities) {
+      var last = state.stats.lastInfinities[state.stats.lastInfinities.length - 1];
+      if (last) {
+        toast('Infinity! +' + fmt(last.ipGainLog) + ' IP (∞ ' + fmtInf(state.infinities) + ')');
+      }
+    }
+    lastKnownInfinities = state.infinities;
+  }
+
+  // ---------- catch-up (offline / hidden-tab, non-blocking) ----------
+  //
+  // Per the Task 11 controller ruling: offline and hidden-tab catch-up use
+  // Engine's DEFAULT step (no dtMin override, unlike the brief's original
+  // dtMin:0.5) and run across animation frames in chunks sized to keep each
+  // frame around 30–50ms, rather than blocking on one huge Engine.simulate
+  // call. A "Catching up…" overlay tracks progress; the main loop is paused
+  // (rAF cancelled) until it finishes, then savedAt/save() run exactly once,
+  // matching the double-count protection the unchunked path used to get for
+  // free from running before the loop ever started.
+
+  var catchingUp = false;
+  var CATCHUP_INITIAL_CHUNK = 300; // seconds of sim time per frame, to start
+  var CATCHUP_TARGET_MS = 40; // aim for the middle of the 30–50ms band
+
+  function showCatchupOverlay() {
+    modalOpen = 'catchup';
+    var panel = el('div', { class: 'modal-panel', role: 'status', 'aria-live': 'polite' }, [
+      el('h2', { class: 'modal-title' }, ['Catching up…']),
+      el('div', { class: 'progress-bar' }, [
+        el('div', { class: 'progress-fill', id: 'catchup-fill' }),
+      ]),
+      el('p', { class: 'help', id: 'catchup-pct' }, ['Catching up… 0%']),
+    ]);
+    showModal(panel);
+  }
+
+  function updateCatchupOverlay(pct) {
+    pct = Math.max(0, Math.min(100, pct));
+    var fill = els.modal.querySelector('#catchup-fill');
+    var label = els.modal.querySelector('#catchup-pct');
+    if (fill) fill.style.width = pct + '%';
+    if (label) label.textContent = 'Catching up… ' + Math.floor(pct) + '%';
+  }
+
+  // Runs `seconds` of simulated time in non-blocking chunks, then calls
+  // `cb(info)` with the aggregated deltas. Guarded against overlap: a second
+  // call (e.g. a visibilitychange firing mid-catch-up) is dropped rather than
+  // racing the first.
+  function runCatchup(seconds, cb) {
+    if (catchingUp || seconds <= 0) return;
+    catchingUp = true;
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    showCatchupOverlay();
+
+    var total = seconds;
+    var remaining = seconds;
+    var chunk = Math.min(remaining, CATCHUP_INITIAL_CHUNK);
+    var before = state.scoreLog;
+    var aggIpLog = -Infinity;
+    var aggInf = 0;
+    var icSeen = {};
+
+    function step() {
+      var t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+      var thisChunk = Math.min(chunk, remaining);
+      var res = Engine.simulate(state, thisChunk);
+      var elapsed = ((window.performance && performance.now) ? performance.now() : Date.now()) - t0;
+      remaining -= thisChunk;
+
+      if (res.ipGainedLog !== -Infinity) {
+        aggIpLog = aggIpLog === -Infinity ? res.ipGainedLog : Engine.logAdd(aggIpLog, res.ipGainedLog);
+      }
+      aggInf += res.infinitiesGained;
+      res.icCompleted.forEach(function (n) { icSeen[n] = true; });
+
+      updateCatchupOverlay(((total - remaining) / total) * 100);
+
+      // Adapt the chunk size toward the target frame time so a fast device
+      // covers more sim-seconds per frame and a slow one backs off.
+      if (elapsed < CATCHUP_TARGET_MS * 0.75 && remaining > 0) {
+        chunk = chunk * 1.5;
+      } else if (elapsed > CATCHUP_TARGET_MS * 1.25) {
+        chunk = Math.max(1, chunk * 0.5);
+      }
+
+      if (remaining > 1e-6) {
+        requestAnimationFrame(step);
+      } else {
+        finish();
+      }
+    }
+
+    function finish() {
+      catchingUp = false;
+      hideModal();
+      state.savedAt = Date.now();
+      save();
+      markDirty();
+      lastKnownInfinities = state.infinities;
+      var icCompleted = Object.keys(icSeen).map(Number).sort(function (a, b) { return a - b; });
+      lastFrame = 0;
+      rafId = requestAnimationFrame(frame);
+      cb({
+        seconds: total,
+        before: before,
+        after: state.scoreLog,
+        ipGainedLog: aggIpLog,
+        infinitiesGained: aggInf,
+        icCompleted: icCompleted,
+      });
+    }
+
+    requestAnimationFrame(step);
   }
 
   // ---------- main loop ----------
@@ -3554,6 +4377,7 @@ if (typeof module !== 'undefined' && module.exports) {
       updateActiveTabBody();
     }
     checkInfinity();
+    checkInfinityToast();
     if (Help) {
       Help.onTick(state);
       Help.refresh();
@@ -3635,14 +4459,12 @@ if (typeof module !== 'undefined' && module.exports) {
         save();
       } else {
         var hiddenSec = Math.min((Date.now() - state.savedAt) / 1000, OFFLINE_CAP_SEC);
-        if (hiddenSec > 0) {
-          var sim = Engine.simulate(state, hiddenSec);
-          if (hiddenSec > 10 && !modalOpen) {
-            showOfflineModal({ seconds: hiddenSec, before: sim.scoreLogBefore, after: sim.scoreLogAfter });
-          }
-          state.savedAt = Date.now();
-          save();
-          markDirty();
+        if (hiddenSec > 0 && !catchingUp) {
+          runCatchup(hiddenSec, function (info) {
+            if (hiddenSec > 10 && !modalOpen) {
+              showOfflineModal(info);
+            }
+          });
         }
         // Reset the frame clock so the next rAF frame doesn't see a huge dt
         // (which frame() clamps to 0.25s anyway) on top of the time we just
@@ -3659,16 +4481,19 @@ if (typeof module !== 'undefined' && module.exports) {
     updateScorebox();
     renderMultbar();
 
-    if (offlineInfo) {
-      showOfflineModal(offlineInfo);
-    } else if (Help) {
-      Help.maybeShowIntroOnBoot(hadSave);
-    }
-
     lastFrame = 0;
     lastDomUpdate = 0;
     lastAutosave = performance.now();
-    rafId = requestAnimationFrame(frame);
+    lastKnownInfinities = state.infinities;
+
+    if (offlineInfo && offlineInfo.seconds > 0) {
+      // runCatchup pauses/resumes the rAF loop itself and calls save() once
+      // catch-up finishes, so the loop is intentionally not started here.
+      runCatchup(offlineInfo.seconds, showOfflineModal);
+    } else {
+      if (Help) Help.maybeShowIntroOnBoot(hadSave);
+      rafId = requestAnimationFrame(frame);
+    }
   }
 
   // ---------- canvas ring hover ----------
@@ -3732,14 +4557,15 @@ if (typeof module !== 'undefined' && module.exports) {
 
     var hadSave = !!state;
 
+    // The actual simulate() call is deferred to init()'s non-blocking
+    // runCatchup, not run here: this must stay a fast, synchronous boot path
+    // (see the Task 11 controller ruling). savedAt/save() likewise happen
+    // once catch-up finishes, not here, to avoid double-counting the gap.
     var offlineInfo = null;
     if (state && state.savedAt) {
       var offlineSec = Math.min((Date.now() - state.savedAt) / 1000, OFFLINE_CAP_SEC);
       if (offlineSec > 10) {
-        var sim = Engine.simulate(state, offlineSec);
-        offlineInfo = { seconds: offlineSec, before: sim.scoreLogBefore, after: sim.scoreLogAfter };
-        state.savedAt = Date.now();
-        save();
+        offlineInfo = { seconds: offlineSec };
       }
     }
 

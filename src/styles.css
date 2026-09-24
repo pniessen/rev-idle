@@ -528,3 +528,151 @@ textarea.save-area {
 .help-intro-actions {
   margin-top: 4px;
 }
+
+/* ---------- tab label / icon collapse (Stats, Settings < 420px) ---------- */
+
+.tab-icon {
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab-icon svg { display: block; }
+
+@media (max-width: 419px) {
+  .tab-label { display: none; }
+  .tab-icon { display: inline-flex; }
+}
+
+/* ---------- catch-up overlay (offline / hidden-tab, non-blocking) ---------- */
+
+.progress-bar {
+  height: 10px;
+  margin: 14px 0 8px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 0.15s ease;
+}
+
+/* ---------- ∞ tab ---------- */
+
+.inf-header {
+  position: sticky;
+  top: -16px;
+  margin: -16px -16px 0;
+  padding: 12px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.inf-subtabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sub-tab-btn {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.inf-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.iu-col-label {
+  font-family: var(--font-mono);
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.iu-col.preview { opacity: 0.5; }
+
+.iu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.iu-card {
+  min-height: 40px;
+  min-width: 0;
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+  overflow-wrap: anywhere;
+}
+
+.iu-card.owned { border-color: var(--accent); }
+
+.iu-card.buyable {
+  cursor: pointer;
+  border-color: var(--accent);
+  box-shadow: 0 0 12px 2px var(--accent);
+}
+
+.iu-card.buyable:hover { box-shadow: 0 0 18px 3px var(--accent); }
+
+.iu-card.locked { opacity: 0.5; }
+
+.iu-cost, .iu-effect, .iu-locked {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.inf-gens {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gp-line { font-family: var(--font-mono); }
+
+.gen-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.gen-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.gen-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}

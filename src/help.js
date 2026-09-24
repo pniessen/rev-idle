@@ -171,10 +171,79 @@
       return names[k] + ' — ' + about[k] + ' Promotion Power boosts the other three.';
     },
 
-    goInfinite: 'Score has exceeded what a number can hold. Going Infinite resets your progress and keeps 1 Infinity Point for a future update.',
+    goInfinite: function (s) {
+      return 'Go Infinite: gain +' + fmt(Engine.ipGainLog(s)) + ' IP and +' + Engine.infGain(s)
+        + ' Infinity, then restart the Revolution stage. Upgrades, generators and IP are kept.';
+    },
 
     helpBtn: 'How to play (key: ? or H).',
+
+    // ---- ∞ tab (Task 11) ----
+
+    ipHeader: function (s) {
+      return 'Infinity Points — earned each time you go Infinite. Next Infinity gives +'
+        + fmt(Engine.ipGainLog(s)) + ' IP. Spend IP on the Tree, Generators and Stars.';
+    },
+    infCount: function (s) {
+      return 'Infinities performed: ' + fmtInf(s.infinities) + '. Several upgrades grow stronger with more Infinities.';
+    },
+    iuCard: function (s, i) {
+      var u = Engine.UPGRADES[i];
+      if (!u) return '';
+      var owned = Engine.hasUpg(s, u.id);
+      var effect = Engine.upgEffect(s, u.id);
+      var status;
+      if (owned) {
+        status = effect === null ? 'Owned.' : 'Owned — currently ×' + fmtEffect(effect) + '.';
+      } else if (u.req === 'prev') {
+        status = 'Requires an earlier column’s upgrade.';
+      } else {
+        status = 'Requires ' + u.req.join(' or ') + '.';
+      }
+      var descText = u.desc.charAt(u.desc.length - 1) === '.' ? u.desc : (u.desc + '.');
+      return u.name + ' — ' + descText + ' Cost ' + fmt(Math.log10(u.cost)) + ' IP. ' + status;
+    },
+    gpLine: function (s) {
+      return 'Generator Power multiplies every ring’s mult gain per lap by GP^' + Engine.gpExp(s).toFixed(3)
+        + '. It resets each Infinity, so runs speed up as they go.';
+    },
+    genRow: function (s, k) {
+      var n = k + 1;
+      var g = s.inf.gens[k];
+      var target = n === 1 ? 'GP' : ('G' + (n - 1));
+      return 'G' + n + ': you have ' + fmt(g.aLog) + ' (' + g.b + ' bought). Each makes ×'
+        + fmt(Engine.genMultLog(s, k)) + ' ' + target + ' per second. Every purchase doubles its output.';
+    },
+    genBuy: function (s, k) {
+      var n = k + 1;
+      return 'Buy another G' + n + ' for ' + fmt(Engine.genCostLog(s, k))
+        + ' IP. Bought generators are kept through Infinity; produced ones are not.';
+    },
+    gpChip: function (s) {
+      return 'Generator Power boost to mult gain: ×' + fmt(Engine.gpMultLog(s)) + '.';
+    },
   };
+
+  // Formats a plain (non-log) multiplier/value for tooltip copy.
+  function fmtEffect(x) {
+    if (!isFinite(x)) return String(x);
+    if (x === 0) return '0';
+    var abs = Math.abs(x);
+    if (abs >= 1000 || abs < 0.001) return x.toExponential(2);
+    if (Math.abs(x - Math.round(x)) < 1e-9) return String(Math.round(x));
+    return x.toFixed(abs < 10 ? 3 : 2);
+  }
+
+  // Formats a plain (non-log) count such as state.infinities: usually an
+  // integer, but passive-Infinity upgrades (18;1) can make it fractional.
+  function fmtInf(n) {
+    var frac = Math.abs(n - Math.round(n)) > 1e-9;
+    try {
+      return n.toLocaleString('en-US', frac ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : {});
+    } catch (e) {
+      return String(n);
+    }
+  }
 
   function textForKey(key, i) {
     var entry = TIPS[key];
@@ -494,6 +563,22 @@
         hooks.toast('Infinity reached — hover Go Infinite for details.');
       }
     }
+    if (state.infinities >= 1) {
+      if (markSeen('infTabSeen')) {
+        hooks.toast('∞ tab unlocked — spend Infinity Points on upgrades.');
+      }
+    }
+    if (Engine.hasUpg(state, '1;1')) {
+      if (markSeen('gensSeen')) {
+        hooks.toast('Generators online — they build Generator Power, which boosts every ring’s mult gain.');
+      }
+    }
+    var auto = Engine.autoUnlocked(state);
+    if (auto.buy || auto.asc || auto.promote || auto.prestige || auto.infinity) {
+      if (markSeen('autoSeen')) {
+        hooks.toast('Automation unlocked — configure it in ∞ → Auto.');
+      }
+    }
   }
 
   window.Help = {
@@ -504,5 +589,6 @@
     refresh: refresh,
     showAt: showAt,
     hide: hide,
+    TIPS: TIPS,
   };
 })();

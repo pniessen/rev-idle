@@ -42,9 +42,19 @@
         return false;
       },
     },
+    {
+      id: 'infinity',
+      label: '∞',
+      visible: function (s) { return s.infinities >= 1 || s.inf.ipLog > -Infinity; },
+    },
     { id: 'stats', label: 'Stats', visible: function () { return true; } },
     { id: 'settings', label: 'Settings', visible: function () { return true; } },
   ];
+
+  var ICONS = {
+    stats: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M12 20V4M20 20v-7"/></svg>',
+    settings: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  };
 
   var PROMO_META = [
     { key: 'p1', name: 'Mult Gain' },
@@ -61,6 +71,18 @@
 
   function fmt(x) {
     return Engine.fmtLog(x);
+  }
+
+  // Formats a plain (non-log) count such as state.infinities: an integer
+  // most of the time, but passive-Infinity upgrades (18;1) can make it
+  // fractional, so it gets 2 decimals only then.
+  function fmtInf(n) {
+    var frac = Math.abs(n - Math.round(n)) > 1e-9;
+    try {
+      return n.toLocaleString('en-US', frac ? { minimumFractionDigits: 2, maximumFractionDigits: 2 } : {});
+    } catch (e) {
+      return String(n);
+    }
   }
 
   function el(tag, attrs, children) {
@@ -159,8 +181,7 @@
   function showOfflineModal(info) {
     modalOpen = 'offline';
     var gainLog = info.before === -Infinity ? info.after : Engine.logSub(info.after, info.before);
-    var panel = el('div', { class: 'modal-panel' }, [
-      el('h2', { class: 'modal-title' }, ['While you were away']),
+    var lines = [
       el('p', { class: 'help' }, [
         'You were gone for ' + fmtTime(info.seconds) + '.',
       ]),
@@ -168,14 +189,33 @@
         el('span', { class: 'label' }, ['Score gained']),
         el('span', {}, [fmt(gainLog)]),
       ]),
-      el('button', { class: 'btn primary full-width', onclick: hideModal }, ['Continue']),
-    ]);
+    ];
+    if (info.ipGainedLog !== undefined && info.ipGainedLog !== -Infinity) {
+      lines.push(el('p', { class: 'stat-line' }, [
+        el('span', { class: 'label' }, ['IP gained']),
+        el('span', {}, ['+' + fmt(info.ipGainedLog)]),
+      ]));
+    }
+    if (info.infinitiesGained) {
+      lines.push(el('p', { class: 'stat-line' }, [
+        el('span', { class: 'label' }, ['Infinities']),
+        el('span', {}, ['+' + fmtInf(info.infinitiesGained)]),
+      ]));
+    }
+    if (info.icCompleted && info.icCompleted.length) {
+      info.icCompleted.forEach(function (n) {
+        lines.push(el('p', { class: 'help' }, ['Challenge ' + n + ' completed']));
+      });
+    }
+    var panel = el('div', { class: 'modal-panel' },
+      [el('h2', { class: 'modal-title' }, ['While you were away'])]
+        .concat(lines)
+        .concat([el('button', { class: 'btn primary full-width', onclick: hideModal }, ['Continue'])]));
     showModal(panel);
   }
 
   function doGoInfinite() {
     if (Engine.goInfinite(state)) {
-      toast('Infinity reached \u2014 welcome back');
       hideModal();
       markDirty();
     }
@@ -184,23 +224,38 @@
   function showInfinityModal() {
     modalOpen = 'infinity';
     var s = state.stats;
-    var panel = el('div', { class: 'modal-panel' }, [
-      el('h2', { class: 'modal-title' }, ['Infinity reached']),
-      el('p', { class: 'help' }, [
-        'Score has exceeded what a number can hold. Going infinite resets your ' +
-          'progress and keeps 1 Infinity Point (IP) for a future update.',
-      ]),
-      el('div', { class: 'kv-list' }, [
-        statLine('Play time', fmtTime(s.playTime)),
-        statLine('Total laps', String(s.totalLaps)),
-        statLine('Prestiges', String(s.prestiges)),
-        statLine('Promotions', String(s.promotions)),
-      ]),
-      el('button', {
-        class: 'btn primary full-width',
-        onclick: doGoInfinite,
-      }, ['Go Infinite']),
-    ]);
+    var isFirst = state.infinities === 0;
+    var panel;
+    if (isFirst) {
+      panel = el('div', { class: 'modal-panel' }, [
+        el('h2', { class: 'modal-title' }, ['Infinity reached']),
+        el('p', { class: 'help' }, [
+          'You gained 1 Infinity Point. Spend it in the new \u221e tab.',
+        ]),
+        el('button', {
+          class: 'btn primary full-width',
+          onclick: doGoInfinite,
+        }, ['Go Infinite']),
+      ]);
+    } else {
+      panel = el('div', { class: 'modal-panel' }, [
+        el('h2', { class: 'modal-title' }, ['Infinity reached']),
+        el('p', { class: 'help' }, [
+          'Score has exceeded what a number can hold. Going infinite resets your ' +
+            'progress and keeps your upgrades, generators and Infinity Points.',
+        ]),
+        el('div', { class: 'kv-list' }, [
+          statLine('Play time', fmtTime(s.playTime)),
+          statLine('Total laps', String(s.totalLaps)),
+          statLine('Prestiges', String(s.prestiges)),
+          statLine('Promotions', String(s.promotions)),
+        ]),
+        el('button', {
+          class: 'btn primary full-width',
+          onclick: doGoInfinite,
+        }, ['Go Infinite']),
+      ]);
+    }
     showModal(panel);
   }
 
@@ -210,6 +265,18 @@
       el('span', {}, [value]),
     ]);
   }
+
+  // Passed to InfinityUI so src/ui-infinity.js never touches window.Engine
+  // for anything DOM/save-related; it only reads state and calls these.
+  var kit = {
+    el: el,
+    fmt: fmt,
+    toast: function (msg) { toast(msg); },
+    twoStepConfirm: function (btn, label, confirmLabel, action) { twoStepConfirm(btn, label, confirmLabel, action); },
+    statLine: statLine,
+    markDirty: function () { markDirty(); },
+    save: function () { save(); },
+  };
 
   // ---------- multbar ----------
 
@@ -234,6 +301,9 @@
     frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'pMultChip', tabindex: '0' }, ['P \u00D7' + fmt(Math.log10(state.pMult))]));
     if (state.pExp > 1) {
       frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'pExpChip', tabindex: '0' }, ['^' + state.pExp.toFixed(3)]));
+    }
+    if (state.inf.gpLog > 0) {
+      frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'gpChip', tabindex: '0' }, ['GP ×' + fmt(Engine.gpMultLog(state))]));
     }
     if (state.infinities > 0) {
       frag.appendChild(el('span', { class: 'chip grey' }, ['\u221E ' + state.infinities]));
@@ -268,13 +338,26 @@
     var visible = computeVisibleTabs();
     els.tabs.innerHTML = '';
     visible.forEach(function (t) {
-      var btn = el('button', {
+      var attrs = {
         class: 'tab-btn',
         role: 'tab',
         'aria-selected': String(t.id === currentTab),
         onclick: function () { location.hash = '#' + t.id; },
-      }, [t.label]);
-      els.tabs.appendChild(btn);
+      };
+      // Only Stats/Settings get the label/icon pair the <420px media query
+      // swaps between; other tabs keep a plain text child so that query
+      // (which only targets .tab-label/.tab-icon) never touches them.
+      var kids;
+      if (ICONS[t.id]) {
+        attrs['aria-label'] = t.label;
+        kids = [
+          el('span', { class: 'tab-label' }, [t.label]),
+          el('span', { class: 'tab-icon', 'aria-hidden': 'true', html: ICONS[t.id] }),
+        ];
+      } else {
+        kids = [t.label];
+      }
+      els.tabs.appendChild(el('button', attrs, kids));
     });
   }
 
@@ -637,6 +720,7 @@
       try {
         var loaded = Engine.deserialize(importArea.value.trim());
         state = loaded;
+        lastKnownInfinities = state.infinities;
         importErr.textContent = '';
         markDirty();
         toast('Save loaded');
@@ -653,6 +737,7 @@
     var resetBtn = el('button', { class: 'btn full-width' });
     twoStepConfirm(resetBtn, 'Hard reset', 'Confirm reset?', function () {
       state = Engine.newState();
+      lastKnownInfinities = state.infinities;
       try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
       markDirty();
       toast('Progress reset');
@@ -670,6 +755,7 @@
     circles: renderCirclesTab,
     prestige: renderPrestigeTab,
     promote: renderPromoteTab,
+    infinity: function (root) { if (window.InfinityUI) window.InfinityUI.render(root, state, kit); },
     stats: renderStatsTab,
     settings: renderSettingsTab,
   };
@@ -678,6 +764,7 @@
     circles: updateCirclesTab,
     prestige: updatePrestigeTab,
     promote: updatePromoteTab,
+    infinity: function (root) { if (window.InfinityUI) window.InfinityUI.update(root, state, kit); },
     stats: updateStatsTab,
     settings: function () {},
   };
@@ -746,12 +833,139 @@
 
   // ---------- infinity check ----------
 
+  var lastKnownInfinities = 0;
+
   function checkInfinity() {
     var can = Engine.canInfinity(state);
     if (els.infinityBtn) els.infinityBtn.style.display = can ? '' : 'none';
-    if (can && !modalOpen) {
+    if (state.inf.pendingConfirm && !modalOpen) {
       showInfinityModal();
     }
+  }
+
+  // Fires for both the automatic path (postTick calls goInfinite directly,
+  // with no modal) and the confirmed path (the modal's button calls
+  // goInfinite then hides itself) — either way, by the next domUpdate the
+  // count is up and no modal is open, which is exactly the condition the
+  // brief specifies.
+  function checkInfinityToast() {
+    if (modalOpen) return;
+    if (state.infinities > lastKnownInfinities) {
+      var last = state.stats.lastInfinities[state.stats.lastInfinities.length - 1];
+      if (last) {
+        toast('Infinity! +' + fmt(last.ipGainLog) + ' IP (∞ ' + fmtInf(state.infinities) + ')');
+      }
+    }
+    lastKnownInfinities = state.infinities;
+  }
+
+  // ---------- catch-up (offline / hidden-tab, non-blocking) ----------
+  //
+  // Per the Task 11 controller ruling: offline and hidden-tab catch-up use
+  // Engine's DEFAULT step (no dtMin override, unlike the brief's original
+  // dtMin:0.5) and run across animation frames in chunks sized to keep each
+  // frame around 30–50ms, rather than blocking on one huge Engine.simulate
+  // call. A "Catching up…" overlay tracks progress; the main loop is paused
+  // (rAF cancelled) until it finishes, then savedAt/save() run exactly once,
+  // matching the double-count protection the unchunked path used to get for
+  // free from running before the loop ever started.
+
+  var catchingUp = false;
+  var CATCHUP_INITIAL_CHUNK = 300; // seconds of sim time per frame, to start
+  var CATCHUP_TARGET_MS = 40; // aim for the middle of the 30–50ms band
+
+  function showCatchupOverlay() {
+    modalOpen = 'catchup';
+    var panel = el('div', { class: 'modal-panel', role: 'status', 'aria-live': 'polite' }, [
+      el('h2', { class: 'modal-title' }, ['Catching up…']),
+      el('div', { class: 'progress-bar' }, [
+        el('div', { class: 'progress-fill', id: 'catchup-fill' }),
+      ]),
+      el('p', { class: 'help', id: 'catchup-pct' }, ['Catching up… 0%']),
+    ]);
+    showModal(panel);
+  }
+
+  function updateCatchupOverlay(pct) {
+    pct = Math.max(0, Math.min(100, pct));
+    var fill = els.modal.querySelector('#catchup-fill');
+    var label = els.modal.querySelector('#catchup-pct');
+    if (fill) fill.style.width = pct + '%';
+    if (label) label.textContent = 'Catching up… ' + Math.floor(pct) + '%';
+  }
+
+  // Runs `seconds` of simulated time in non-blocking chunks, then calls
+  // `cb(info)` with the aggregated deltas. Guarded against overlap: a second
+  // call (e.g. a visibilitychange firing mid-catch-up) is dropped rather than
+  // racing the first.
+  function runCatchup(seconds, cb) {
+    if (catchingUp || seconds <= 0) return;
+    catchingUp = true;
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    showCatchupOverlay();
+
+    var total = seconds;
+    var remaining = seconds;
+    var chunk = Math.min(remaining, CATCHUP_INITIAL_CHUNK);
+    var before = state.scoreLog;
+    var aggIpLog = -Infinity;
+    var aggInf = 0;
+    var icSeen = {};
+
+    function step() {
+      var t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+      var thisChunk = Math.min(chunk, remaining);
+      var res = Engine.simulate(state, thisChunk);
+      var elapsed = ((window.performance && performance.now) ? performance.now() : Date.now()) - t0;
+      remaining -= thisChunk;
+
+      if (res.ipGainedLog !== -Infinity) {
+        aggIpLog = aggIpLog === -Infinity ? res.ipGainedLog : Engine.logAdd(aggIpLog, res.ipGainedLog);
+      }
+      aggInf += res.infinitiesGained;
+      res.icCompleted.forEach(function (n) { icSeen[n] = true; });
+
+      updateCatchupOverlay(((total - remaining) / total) * 100);
+
+      // Adapt the chunk size toward the target frame time so a fast device
+      // covers more sim-seconds per frame and a slow one backs off.
+      if (elapsed < CATCHUP_TARGET_MS * 0.75 && remaining > 0) {
+        chunk = chunk * 1.5;
+      } else if (elapsed > CATCHUP_TARGET_MS * 1.25) {
+        chunk = Math.max(1, chunk * 0.5);
+      }
+
+      if (remaining > 1e-6) {
+        requestAnimationFrame(step);
+      } else {
+        finish();
+      }
+    }
+
+    function finish() {
+      catchingUp = false;
+      hideModal();
+      state.savedAt = Date.now();
+      save();
+      markDirty();
+      lastKnownInfinities = state.infinities;
+      var icCompleted = Object.keys(icSeen).map(Number).sort(function (a, b) { return a - b; });
+      lastFrame = 0;
+      rafId = requestAnimationFrame(frame);
+      cb({
+        seconds: total,
+        before: before,
+        after: state.scoreLog,
+        ipGainedLog: aggIpLog,
+        infinitiesGained: aggInf,
+        icCompleted: icCompleted,
+      });
+    }
+
+    requestAnimationFrame(step);
   }
 
   // ---------- main loop ----------
@@ -793,6 +1007,7 @@
       updateActiveTabBody();
     }
     checkInfinity();
+    checkInfinityToast();
     if (Help) {
       Help.onTick(state);
       Help.refresh();
@@ -874,14 +1089,12 @@
         save();
       } else {
         var hiddenSec = Math.min((Date.now() - state.savedAt) / 1000, OFFLINE_CAP_SEC);
-        if (hiddenSec > 0) {
-          var sim = Engine.simulate(state, hiddenSec);
-          if (hiddenSec > 10 && !modalOpen) {
-            showOfflineModal({ seconds: hiddenSec, before: sim.scoreLogBefore, after: sim.scoreLogAfter });
-          }
-          state.savedAt = Date.now();
-          save();
-          markDirty();
+        if (hiddenSec > 0 && !catchingUp) {
+          runCatchup(hiddenSec, function (info) {
+            if (hiddenSec > 10 && !modalOpen) {
+              showOfflineModal(info);
+            }
+          });
         }
         // Reset the frame clock so the next rAF frame doesn't see a huge dt
         // (which frame() clamps to 0.25s anyway) on top of the time we just
@@ -898,16 +1111,19 @@
     updateScorebox();
     renderMultbar();
 
-    if (offlineInfo) {
-      showOfflineModal(offlineInfo);
-    } else if (Help) {
-      Help.maybeShowIntroOnBoot(hadSave);
-    }
-
     lastFrame = 0;
     lastDomUpdate = 0;
     lastAutosave = performance.now();
-    rafId = requestAnimationFrame(frame);
+    lastKnownInfinities = state.infinities;
+
+    if (offlineInfo && offlineInfo.seconds > 0) {
+      // runCatchup pauses/resumes the rAF loop itself and calls save() once
+      // catch-up finishes, so the loop is intentionally not started here.
+      runCatchup(offlineInfo.seconds, showOfflineModal);
+    } else {
+      if (Help) Help.maybeShowIntroOnBoot(hadSave);
+      rafId = requestAnimationFrame(frame);
+    }
   }
 
   // ---------- canvas ring hover ----------
@@ -971,14 +1187,15 @@
 
     var hadSave = !!state;
 
+    // The actual simulate() call is deferred to init()'s non-blocking
+    // runCatchup, not run here: this must stay a fast, synchronous boot path
+    // (see the Task 11 controller ruling). savedAt/save() likewise happen
+    // once catch-up finishes, not here, to avoid double-counting the gap.
     var offlineInfo = null;
     if (state && state.savedAt) {
       var offlineSec = Math.min((Date.now() - state.savedAt) / 1000, OFFLINE_CAP_SEC);
       if (offlineSec > 10) {
-        var sim = Engine.simulate(state, offlineSec);
-        offlineInfo = { seconds: offlineSec, before: sim.scoreLogBefore, after: sim.scoreLogAfter };
-        state.savedAt = Date.now();
-        save();
+        offlineInfo = { seconds: offlineSec };
       }
     }
 
