@@ -717,6 +717,7 @@
     var importErr = el('div', { class: 'error-text' });
     var loadBtn = el('button', { class: 'btn' }, ['Load']);
     loadBtn.addEventListener('click', function () {
+      if (catchingUp) { toast('Catching up…'); return; }
       try {
         var loaded = Engine.deserialize(importArea.value.trim());
         state = loaded;
@@ -736,6 +737,7 @@
     wrap.appendChild(el('p', { class: 'help' }, ['Erases all progress. This cannot be undone.']));
     var resetBtn = el('button', { class: 'btn full-width' });
     twoStepConfirm(resetBtn, 'Hard reset', 'Confirm reset?', function () {
+      if (catchingUp) { toast('Catching up…'); return; }
       state = Engine.newState();
       lastKnownInfinities = state.infinities;
       try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
@@ -874,6 +876,14 @@
   var CATCHUP_INITIAL_CHUNK = 300; // seconds of sim time per frame, to start
   var CATCHUP_TARGET_MS = 40; // aim for the middle of the 30–50ms band
 
+  // The real-world instant `state` has actually been simulated up through,
+  // mid-catch-up. Checkpointed every chunk so that if the page is hidden (or
+  // closed) before catch-up finishes, the hidden-tab save below can stamp
+  // this instead of "now" — otherwise the un-simulated remainder between
+  // this checkpoint and "now" would be silently dropped on the next load
+  // (savedAt=now would claim the gap was already accounted for).
+  var catchupCheckpointMs = null;
+
   function showCatchupOverlay() {
     modalOpen = 'catchup';
     var panel = el('div', { class: 'modal-panel', role: 'status', 'aria-live': 'polite' }, [
@@ -911,6 +921,10 @@
     var remaining = seconds;
     var chunk = Math.min(remaining, CATCHUP_INITIAL_CHUNK);
     var before = state.scoreLog;
+    // state.savedAt right now is the real instant this catch-up's simulated
+    // time starts counting from (0 s simulated so far).
+    var startMs = state.savedAt;
+    catchupCheckpointMs = startMs;
     var aggIpLog = -Infinity;
     var aggInf = 0;
     var icSeen = {};
@@ -928,6 +942,7 @@
       aggInf += res.infinitiesGained;
       res.icCompleted.forEach(function (n) { icSeen[n] = true; });
 
+      catchupCheckpointMs = startMs + (total - remaining) * 1000;
       updateCatchupOverlay(((total - remaining) / total) * 100);
 
       // Adapt the chunk size toward the target frame time so a fast device
@@ -947,6 +962,7 @@
 
     function finish() {
       catchingUp = false;
+      catchupCheckpointMs = null;
       hideModal();
       state.savedAt = Date.now();
       save();
@@ -1086,7 +1102,20 @@
     window.addEventListener('hashchange', syncFromHash);
     document.addEventListener('visibilitychange', function () {
       if (document.hidden) {
-        save();
+        if (catchingUp && catchupCheckpointMs !== null) {
+          // Mid-catch-up, `state` only reflects progress up through
+          // catchupCheckpointMs, not "now" — stamping savedAt=now (what
+          // save() does) would claim the un-simulated remainder never
+          // happened, silently dropping it. Checkpoint to the true
+          // simulated-until instant instead, so a reload resumes exactly
+          // the remainder.
+          try {
+            state.savedAt = catchupCheckpointMs;
+            localStorage.setItem(SAVE_KEY, Engine.serialize(state));
+          } catch (e) { /* ignore: game must run without localStorage */ }
+        } else {
+          save();
+        }
       } else {
         var hiddenSec = Math.min((Date.now() - state.savedAt) / 1000, OFFLINE_CAP_SEC);
         if (hiddenSec > 0 && !catchingUp) {

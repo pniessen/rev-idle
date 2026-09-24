@@ -633,6 +633,12 @@ textarea.save-area {
 
 .iu-card.locked { opacity: 0.5; }
 
+/* Requirement met, just short on IP: less dim than a fully locked node
+   (whose requirement isn't met at all), and its cost line is the one that
+   should read as the blocker. */
+.iu-card.unaffordable { opacity: 0.75; }
+.iu-card.unaffordable .iu-cost { color: var(--warn); }
+
 .iu-cost, .iu-effect, .iu-locked {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;

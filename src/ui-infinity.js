@@ -151,19 +151,46 @@
     return 'Needs ' + u.req.join(' or ');
   }
 
+  // Some upgrade effects aren't a plain "×N" multiplier: 2;1/6;1/13;1 add a
+  // flat amount, 14;2/19;1 assign gpExp outright, and 18;1 is a rate. This
+  // hint map lets the effect line (and help.js's iuCard tooltip) say the
+  // right thing instead of a blanket "now ×N" for all of them.
+  var EFFECT_FORMAT = {
+    '2;1': function (v) { return 'now +' + fmtNum(v); },
+    '6;1': function (v) { return 'now +' + fmtNum(v); },
+    '13;1': function (v) { return 'now +' + fmtNum(v); },
+    '14;2': function (v) { return 'now GP exponent ' + v.toFixed(3); },
+    '19;1': function (v) { return 'now GP exponent ' + v.toFixed(3); },
+    '18;1': function (v) { return 'now +' + fmtNum(v) + ' ∞/s'; },
+  };
+
+  function effectSuffix(u, effect) {
+    if (effect === null) return '';
+    var f = EFFECT_FORMAT[u.id];
+    return ' · ' + (f ? f(effect) : ('now ×' + fmtNum(effect)));
+  }
+
   function buildCard(kit, state, cols, u, idx, dimmed) {
     var owned = Engine.hasUpg(state, u.id);
-    var buyable = !owned && Engine.canBuyUpgrade(state, u.id);
+    var reqMet = Engine.upgReqMet(state, u.id);
+    var buyable = !owned && reqMet && Engine.canBuyUpgrade(state, u.id);
+    // Requirement met but not enough IP yet is a different state from an
+    // unmet requirement: it doesn't get the "Needs X" text, since the card
+    // isn't blocked on anything but affordability.
+    var unaffordable = !owned && reqMet && !buyable;
     var effect = Engine.upgEffect(state, u.id);
-    var stateCls = owned ? 'owned' : buyable ? 'buyable' : 'locked';
+    var stateCls = owned ? 'owned' : buyable ? 'buyable' : (unaffordable ? 'unaffordable' : 'locked');
 
     var kids = [
       kit.el('div', { class: 'card-title' }, [u.name]),
       kit.el('div', { class: 'iu-cost' }, [fmt(Math.log10(u.cost)) + ' IP']),
-      kit.el('div', { class: 'iu-effect' }, [u.desc + (effect !== null ? (' · now ×' + fmtNum(effect)) : '')]),
+      kit.el('div', { class: 'iu-effect' }, [u.desc + effectSuffix(u, effect)]),
     ];
-    if (!owned && !buyable) {
+    if (!owned && !reqMet) {
       kids.push(kit.el('div', { class: 'iu-locked' }, [lockedText(cols, u)]));
+    } else if (unaffordable) {
+      var shortLog = Engine.logSub(Math.log10(u.cost), state.inf.ipLog);
+      kids.push(kit.el('div', { class: 'iu-locked' }, ['Need ' + fmt(shortLog) + ' more IP']));
     }
 
     var attrs = {
@@ -213,6 +240,7 @@
   // buyable card is a <button>) or a different set of columns.
   function updateTree(root, kit, state) {
     var needsRebuild = false;
+    var treeCols = columnsOf(Engine.UPGRADES);
     var cards = root.querySelectorAll('.iu-card');
     for (var i = 0; i < cards.length; i++) {
       var node = cards[i];
@@ -220,18 +248,33 @@
       var u = Engine.upgById(id);
       if (!u) continue;
       var owned = Engine.hasUpg(state, id);
-      var buyable = !owned && Engine.canBuyUpgrade(state, id);
+      var reqMet = Engine.upgReqMet(state, id);
+      var buyable = !owned && reqMet && Engine.canBuyUpgrade(state, id);
+      // owned/buyable each need a different DOM tag (only buyable is a
+      // <button>), so those transitions force a full rebuild. locked <->
+      // unaffordable is div-to-div and just needs its class/text patched.
       if (owned !== node.classList.contains('owned') || buyable !== node.classList.contains('buyable')) {
         needsRebuild = true;
         break;
       }
+      var unaffordable = !owned && reqMet && !buyable;
+      node.classList.toggle('unaffordable', unaffordable);
+      node.classList.toggle('locked', !owned && !buyable && !unaffordable);
+
       var effect = Engine.upgEffect(state, id);
       var effLine = node.querySelector('.iu-effect');
-      if (effLine) effLine.textContent = u.desc + (effect !== null ? (' · now ×' + fmtNum(effect)) : '');
+      if (effLine) effLine.textContent = u.desc + effectSuffix(u, effect);
+
+      var lockedLine = node.querySelector('.iu-locked');
+      if (!owned && !reqMet) {
+        if (lockedLine) lockedLine.textContent = lockedText(treeCols, u);
+      } else if (unaffordable) {
+        var shortLog = Engine.logSub(Math.log10(u.cost), state.inf.ipLog);
+        if (lockedLine) lockedLine.textContent = 'Need ' + fmt(shortLog) + ' more IP';
+      }
     }
     if (!needsRebuild) {
-      var cols = columnsOf(Engine.UPGRADES);
-      var reveal = revealColumns(state, cols);
+      var reveal = revealColumns(state, treeCols);
       var shownCols = Array.prototype.map.call(root.querySelectorAll('.iu-col'), function (n) {
         return Number(n.getAttribute('data-col'));
       });
@@ -310,8 +353,9 @@
       wrap.appendChild(buildGenRow(kit, state, k));
       maxMult = Math.max(maxMult, Engine.genMultLog(state, k));
     }
-    if (maxMult >= 1000) {
-      wrap.appendChild(kit.el('p', { class: 'help' }, ['Generator Mult softcapped above e1,000']));
+    var softcapLog = Engine.TUNE.genSoftcapLog;
+    if (maxMult >= softcapLog) {
+      wrap.appendChild(kit.el('p', { class: 'help' }, ['Generator Mult softcapped above e' + softcapLog.toLocaleString('en-US')]));
     }
     return wrap;
   }

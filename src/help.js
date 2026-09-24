@@ -194,11 +194,12 @@
       var effect = Engine.upgEffect(s, u.id);
       var status;
       if (owned) {
-        status = effect === null ? 'Owned.' : 'Owned — currently ×' + fmtEffect(effect) + '.';
-      } else if (u.req === 'prev') {
-        status = 'Requires an earlier column’s upgrade.';
+        status = effect === null ? 'Owned.' : 'Owned — ' + effectText(u, effect) + '.';
+      } else if (!Engine.upgReqMet(s, u.id)) {
+        status = u.req === 'prev' ? 'Requires an earlier column’s upgrade.' : 'Requires ' + u.req.join(' or ') + '.';
       } else {
-        status = 'Requires ' + u.req.join(' or ') + '.';
+        // Requirement met — the only thing blocking it is IP.
+        status = 'Requirement met — not enough IP yet.';
       }
       var descText = u.desc.charAt(u.desc.length - 1) === '.' ? u.desc : (u.desc + '.');
       return u.name + ' — ' + descText + ' Cost ' + fmt(Math.log10(u.cost)) + ' IP. ' + status;
@@ -232,6 +233,24 @@
     if (abs >= 1000 || abs < 0.001) return x.toExponential(2);
     if (Math.abs(x - Math.round(x)) < 1e-9) return String(Math.round(x));
     return x.toFixed(abs < 10 ? 3 : 2);
+  }
+
+  // Mirrors src/ui-infinity.js's EFFECT_FORMAT: most upgrades are a plain
+  // "×N" multiplier, but 2;1/6;1/13;1 add a flat amount, 14;2/19;1 assign
+  // gpExp outright, and 18;1 is a rate — this keeps the tooltip honest about
+  // which kind of number it's showing.
+  var EFFECT_FORMAT = {
+    '2;1': function (v) { return 'currently +' + fmtEffect(v); },
+    '6;1': function (v) { return 'currently +' + fmtEffect(v); },
+    '13;1': function (v) { return 'currently +' + fmtEffect(v); },
+    '14;2': function (v) { return 'currently GP exponent ' + v.toFixed(3); },
+    '19;1': function (v) { return 'currently GP exponent ' + v.toFixed(3); },
+    '18;1': function (v) { return 'currently +' + fmtEffect(v) + ' ∞/s'; },
+  };
+
+  function effectText(u, effect) {
+    var f = EFFECT_FORMAT[u.id];
+    return f ? f(effect) : ('currently ×' + fmtEffect(effect));
   }
 
   // Formats a plain (non-log) count such as state.infinities: usually an

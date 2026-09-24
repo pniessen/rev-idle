@@ -637,6 +637,12 @@ textarea.save-area {
 
 .iu-card.locked { opacity: 0.5; }
 
+/* Requirement met, just short on IP: less dim than a fully locked node
+   (whose requirement isn't met at all), and its cost line is the one that
+   should read as the blocker. */
+.iu-card.unaffordable { opacity: 0.75; }
+.iu-card.unaffordable .iu-cost { color: var(--warn); }
+
 .iu-cost, .iu-effect, .iu-locked {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -2585,11 +2591,12 @@ if (typeof module !== 'undefined' && module.exports) {
       var effect = Engine.upgEffect(s, u.id);
       var status;
       if (owned) {
-        status = effect === null ? 'Owned.' : 'Owned — currently ×' + fmtEffect(effect) + '.';
-      } else if (u.req === 'prev') {
-        status = 'Requires an earlier column’s upgrade.';
+        status = effect === null ? 'Owned.' : 'Owned — ' + effectText(u, effect) + '.';
+      } else if (!Engine.upgReqMet(s, u.id)) {
+        status = u.req === 'prev' ? 'Requires an earlier column’s upgrade.' : 'Requires ' + u.req.join(' or ') + '.';
       } else {
-        status = 'Requires ' + u.req.join(' or ') + '.';
+        // Requirement met — the only thing blocking it is IP.
+        status = 'Requirement met — not enough IP yet.';
       }
       var descText = u.desc.charAt(u.desc.length - 1) === '.' ? u.desc : (u.desc + '.');
       return u.name + ' — ' + descText + ' Cost ' + fmt(Math.log10(u.cost)) + ' IP. ' + status;
@@ -2623,6 +2630,24 @@ if (typeof module !== 'undefined' && module.exports) {
     if (abs >= 1000 || abs < 0.001) return x.toExponential(2);
     if (Math.abs(x - Math.round(x)) < 1e-9) return String(Math.round(x));
     return x.toFixed(abs < 10 ? 3 : 2);
+  }
+
+  // Mirrors src/ui-infinity.js's EFFECT_FORMAT: most upgrades are a plain
+  // "×N" multiplier, but 2;1/6;1/13;1 add a flat amount, 14;2/19;1 assign
+  // gpExp outright, and 18;1 is a rate — this keeps the tooltip honest about
+  // which kind of number it's showing.
+  var EFFECT_FORMAT = {
+    '2;1': function (v) { return 'currently +' + fmtEffect(v); },
+    '6;1': function (v) { return 'currently +' + fmtEffect(v); },
+    '13;1': function (v) { return 'currently +' + fmtEffect(v); },
+    '14;2': function (v) { return 'currently GP exponent ' + v.toFixed(3); },
+    '19;1': function (v) { return 'currently GP exponent ' + v.toFixed(3); },
+    '18;1': function (v) { return 'currently +' + fmtEffect(v) + ' ∞/s'; },
+  };
+
+  function effectText(u, effect) {
+    var f = EFFECT_FORMAT[u.id];
+    return f ? f(effect) : ('currently ×' + fmtEffect(effect));
   }
 
   // Formats a plain (non-log) count such as state.infinities: usually an
@@ -3137,19 +3162,46 @@ if (typeof module !== 'undefined' && module.exports) {
     return 'Needs ' + u.req.join(' or ');
   }
 
+  // Some upgrade effects aren't a plain "×N" multiplier: 2;1/6;1/13;1 add a
+  // flat amount, 14;2/19;1 assign gpExp outright, and 18;1 is a rate. This
+  // hint map lets the effect line (and help.js's iuCard tooltip) say the
+  // right thing instead of a blanket "now ×N" for all of them.
+  var EFFECT_FORMAT = {
+    '2;1': function (v) { return 'now +' + fmtNum(v); },
+    '6;1': function (v) { return 'now +' + fmtNum(v); },
+    '13;1': function (v) { return 'now +' + fmtNum(v); },
+    '14;2': function (v) { return 'now GP exponent ' + v.toFixed(3); },
+    '19;1': function (v) { return 'now GP exponent ' + v.toFixed(3); },
+    '18;1': function (v) { return 'now +' + fmtNum(v) + ' ∞/s'; },
+  };
+
+  function effectSuffix(u, effect) {
+    if (effect === null) return '';
+    var f = EFFECT_FORMAT[u.id];
+    return ' · ' + (f ? f(effect) : ('now ×' + fmtNum(effect)));
+  }
+
   function buildCard(kit, state, cols, u, idx, dimmed) {
     var owned = Engine.hasUpg(state, u.id);
-    var buyable = !owned && Engine.canBuyUpgrade(state, u.id);
+    var reqMet = Engine.upgReqMet(state, u.id);
+    var buyable = !owned && reqMet && Engine.canBuyUpgrade(state, u.id);
+    // Requirement met but not enough IP yet is a different state from an
+    // unmet requirement: it doesn't get the "Needs X" text, since the card
+    // isn't blocked on anything but affordability.
+    var unaffordable = !owned && reqMet && !buyable;
     var effect = Engine.upgEffect(state, u.id);
-    var stateCls = owned ? 'owned' : buyable ? 'buyable' : 'locked';
+    var stateCls = owned ? 'owned' : buyable ? 'buyable' : (unaffordable ? 'unaffordable' : 'locked');
 
     var kids = [
       kit.el('div', { class: 'card-title' }, [u.name]),
       kit.el('div', { class: 'iu-cost' }, [fmt(Math.log10(u.cost)) + ' IP']),
-      kit.el('div', { class: 'iu-effect' }, [u.desc + (effect !== null ? (' · now ×' + fmtNum(effect)) : '')]),
+      kit.el('div', { class: 'iu-effect' }, [u.desc + effectSuffix(u, effect)]),
     ];
-    if (!owned && !buyable) {
+    if (!owned && !reqMet) {
       kids.push(kit.el('div', { class: 'iu-locked' }, [lockedText(cols, u)]));
+    } else if (unaffordable) {
+      var shortLog = Engine.logSub(Math.log10(u.cost), state.inf.ipLog);
+      kids.push(kit.el('div', { class: 'iu-locked' }, ['Need ' + fmt(shortLog) + ' more IP']));
     }
 
     var attrs = {
@@ -3199,6 +3251,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // buyable card is a <button>) or a different set of columns.
   function updateTree(root, kit, state) {
     var needsRebuild = false;
+    var treeCols = columnsOf(Engine.UPGRADES);
     var cards = root.querySelectorAll('.iu-card');
     for (var i = 0; i < cards.length; i++) {
       var node = cards[i];
@@ -3206,18 +3259,33 @@ if (typeof module !== 'undefined' && module.exports) {
       var u = Engine.upgById(id);
       if (!u) continue;
       var owned = Engine.hasUpg(state, id);
-      var buyable = !owned && Engine.canBuyUpgrade(state, id);
+      var reqMet = Engine.upgReqMet(state, id);
+      var buyable = !owned && reqMet && Engine.canBuyUpgrade(state, id);
+      // owned/buyable each need a different DOM tag (only buyable is a
+      // <button>), so those transitions force a full rebuild. locked <->
+      // unaffordable is div-to-div and just needs its class/text patched.
       if (owned !== node.classList.contains('owned') || buyable !== node.classList.contains('buyable')) {
         needsRebuild = true;
         break;
       }
+      var unaffordable = !owned && reqMet && !buyable;
+      node.classList.toggle('unaffordable', unaffordable);
+      node.classList.toggle('locked', !owned && !buyable && !unaffordable);
+
       var effect = Engine.upgEffect(state, id);
       var effLine = node.querySelector('.iu-effect');
-      if (effLine) effLine.textContent = u.desc + (effect !== null ? (' · now ×' + fmtNum(effect)) : '');
+      if (effLine) effLine.textContent = u.desc + effectSuffix(u, effect);
+
+      var lockedLine = node.querySelector('.iu-locked');
+      if (!owned && !reqMet) {
+        if (lockedLine) lockedLine.textContent = lockedText(treeCols, u);
+      } else if (unaffordable) {
+        var shortLog = Engine.logSub(Math.log10(u.cost), state.inf.ipLog);
+        if (lockedLine) lockedLine.textContent = 'Need ' + fmt(shortLog) + ' more IP';
+      }
     }
     if (!needsRebuild) {
-      var cols = columnsOf(Engine.UPGRADES);
-      var reveal = revealColumns(state, cols);
+      var reveal = revealColumns(state, treeCols);
       var shownCols = Array.prototype.map.call(root.querySelectorAll('.iu-col'), function (n) {
         return Number(n.getAttribute('data-col'));
       });
@@ -3296,8 +3364,9 @@ if (typeof module !== 'undefined' && module.exports) {
       wrap.appendChild(buildGenRow(kit, state, k));
       maxMult = Math.max(maxMult, Engine.genMultLog(state, k));
     }
-    if (maxMult >= 1000) {
-      wrap.appendChild(kit.el('p', { class: 'help' }, ['Generator Mult softcapped above e1,000']));
+    var softcapLog = Engine.TUNE.genSoftcapLog;
+    if (maxMult >= softcapLog) {
+      wrap.appendChild(kit.el('p', { class: 'help' }, ['Generator Mult softcapped above e' + softcapLog.toLocaleString('en-US')]));
     }
     return wrap;
   }
@@ -4087,6 +4156,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var importErr = el('div', { class: 'error-text' });
     var loadBtn = el('button', { class: 'btn' }, ['Load']);
     loadBtn.addEventListener('click', function () {
+      if (catchingUp) { toast('Catching up…'); return; }
       try {
         var loaded = Engine.deserialize(importArea.value.trim());
         state = loaded;
@@ -4106,6 +4176,7 @@ if (typeof module !== 'undefined' && module.exports) {
     wrap.appendChild(el('p', { class: 'help' }, ['Erases all progress. This cannot be undone.']));
     var resetBtn = el('button', { class: 'btn full-width' });
     twoStepConfirm(resetBtn, 'Hard reset', 'Confirm reset?', function () {
+      if (catchingUp) { toast('Catching up…'); return; }
       state = Engine.newState();
       lastKnownInfinities = state.infinities;
       try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
@@ -4244,6 +4315,14 @@ if (typeof module !== 'undefined' && module.exports) {
   var CATCHUP_INITIAL_CHUNK = 300; // seconds of sim time per frame, to start
   var CATCHUP_TARGET_MS = 40; // aim for the middle of the 30–50ms band
 
+  // The real-world instant `state` has actually been simulated up through,
+  // mid-catch-up. Checkpointed every chunk so that if the page is hidden (or
+  // closed) before catch-up finishes, the hidden-tab save below can stamp
+  // this instead of "now" — otherwise the un-simulated remainder between
+  // this checkpoint and "now" would be silently dropped on the next load
+  // (savedAt=now would claim the gap was already accounted for).
+  var catchupCheckpointMs = null;
+
   function showCatchupOverlay() {
     modalOpen = 'catchup';
     var panel = el('div', { class: 'modal-panel', role: 'status', 'aria-live': 'polite' }, [
@@ -4281,6 +4360,10 @@ if (typeof module !== 'undefined' && module.exports) {
     var remaining = seconds;
     var chunk = Math.min(remaining, CATCHUP_INITIAL_CHUNK);
     var before = state.scoreLog;
+    // state.savedAt right now is the real instant this catch-up's simulated
+    // time starts counting from (0 s simulated so far).
+    var startMs = state.savedAt;
+    catchupCheckpointMs = startMs;
     var aggIpLog = -Infinity;
     var aggInf = 0;
     var icSeen = {};
@@ -4298,6 +4381,7 @@ if (typeof module !== 'undefined' && module.exports) {
       aggInf += res.infinitiesGained;
       res.icCompleted.forEach(function (n) { icSeen[n] = true; });
 
+      catchupCheckpointMs = startMs + (total - remaining) * 1000;
       updateCatchupOverlay(((total - remaining) / total) * 100);
 
       // Adapt the chunk size toward the target frame time so a fast device
@@ -4317,6 +4401,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     function finish() {
       catchingUp = false;
+      catchupCheckpointMs = null;
       hideModal();
       state.savedAt = Date.now();
       save();
@@ -4456,7 +4541,20 @@ if (typeof module !== 'undefined' && module.exports) {
     window.addEventListener('hashchange', syncFromHash);
     document.addEventListener('visibilitychange', function () {
       if (document.hidden) {
-        save();
+        if (catchingUp && catchupCheckpointMs !== null) {
+          // Mid-catch-up, `state` only reflects progress up through
+          // catchupCheckpointMs, not "now" — stamping savedAt=now (what
+          // save() does) would claim the un-simulated remainder never
+          // happened, silently dropping it. Checkpoint to the true
+          // simulated-until instant instead, so a reload resumes exactly
+          // the remainder.
+          try {
+            state.savedAt = catchupCheckpointMs;
+            localStorage.setItem(SAVE_KEY, Engine.serialize(state));
+          } catch (e) { /* ignore: game must run without localStorage */ }
+        } else {
+          save();
+        }
       } else {
         var hiddenSec = Math.min((Date.now() - state.savedAt) / 1000, OFFLINE_CAP_SEC);
         if (hiddenSec > 0 && !catchingUp) {
