@@ -74,6 +74,18 @@ test('fmtLog', () => {
   assert.equal(E.fmtLog(Math.log10(9.999e7)), '1.00e8');
 });
 
+test('fmtLog shows up to 3 significant digits for values under 1000', () => {
+  assert.equal(E.fmtLog(Math.log10(0.04)), '0.04');
+  assert.equal(E.fmtLog(Math.log10(1.9)), '1.9');
+  assert.equal(E.fmtLog(Math.log10(12.5)), '12.5');
+  assert.equal(E.fmtLog(Math.log10(999)), '999');
+});
+
+test('logSub is exported and inverts logAdd', () => {
+  close(E.logSub(Math.log10(150), Math.log10(50)), Math.log10(100));
+  assert.equal(E.logSub(5, -Infinity), 5);
+});
+
 test('simulate equals many ticks roughly', () => {
   const a = E.newState(), b = E.newState();
   E.simulate(a, 100);

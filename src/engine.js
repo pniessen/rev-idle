@@ -313,7 +313,18 @@ const Engine = (() => {
   function fmtLog(x) {
     if (x === -Infinity) return '0';
     if (x < 6) {
-      return Math.floor(10 ** x + 1e-9).toLocaleString('en-US');
+      const v = 10 ** x;
+      if (v < 1000) {
+        // Up to 3 significant digits, trailing zeros trimmed (e.g. 0.04,
+        // 1.9, 12.5, 999) instead of flooring small values to 0.
+        const str = v.toPrecision(3);
+        if (str.indexOf('e') === -1 && str.indexOf('E') === -1) {
+          return str.indexOf('.') === -1 ? str : str.replace(/0+$/, '').replace(/\.$/, '');
+        }
+        // toPrecision rounded up into exponential form (e.g. 999.99 -> 1e+3);
+        // fall through to the >=1000 integer formatting below.
+      }
+      return Math.floor(v + 1e-9).toLocaleString('en-US');
     }
     let exp = Math.floor(x);
     let mantissa = 10 ** (x - exp);
@@ -354,6 +365,7 @@ const Engine = (() => {
     promoEffects,
     fmtLog,
     logAdd,
+    logSub,
   };
 })();
 
