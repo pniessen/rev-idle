@@ -156,7 +156,7 @@ perRevLog       = (pExp + expAdd) · (Σ unlocked multLog + log10(pMult) + prodL
 ```
 raw pMult = 2.56 · (scoreLog−3)^2.25 · pMultMult
 pMult     = raw^gainPow
-pExp      = 1 + ((scoreLog−5)/225) · pExpMult · gainPow
+pExp      = 1 + ((min(scoreLog, INFINITY_LOG)−5)/225) · pExpMult · gainPow
 ```
 
 **Promotion XP:**
@@ -588,7 +588,7 @@ These use the concurrent help system: a `data-tip` key with optional `data-tip-i
 | `u141K` | 0.1 | 14;1 |
 | `icRefSec`, `ctfMax` | 36000, 1e4 | 15;2–4 |
 | `u163Ref` | 3600 | 16;3 |
-| `passiveInfK` | 2 | 18;1 |
+| `passiveInfK` | 0.2 (was 2; Task 14) | 18;1 |
 | `u201Ref`, `u201Cap` | 600, 100 | 20;1 |
 | `ic1Boost`, `ic5Nerf`, `ic5Reward` | 1.5, 0.25, 1.1 | challenge promotion factors |
 | `ic6Decay` | 0.01 | per-second fractional decay of colour mult logs |
@@ -597,8 +597,9 @@ These use the concurrent help system: a `data-tip` key with optional `data-tip-i
 | `autoBuyMaxPerStep` | 500 | CPU guard |
 | `ic4Pow` | 0.32 (wiki 0.4; see Deviations) | [W] IC4 gain power (last-resort lever) |
 | `ic9Circles` | 3 (wiki 4; see Deviations) | [W] IC9 circle limit (last-resort lever) |
-| `breakStartLog`, `breakStepLog` | 2772, 308 | [W] IP bar (×10 at e3,080, then every e308) |
-| `starStep` | `[[0,3],[18,7],[30,'grow']]` | [W]/[R] star cost steps: 3 below index 18, 7 below 30, then `7 + (j−29)` |
+| `breakStartLog`, `breakStepLog` | 4100, 74 (wiki 2772, 308; see Deviations) | [W] IP bar: ×10 per `breakStepLog` of score past `breakStartLog` (wiki: ×10 at e3,080, then every e308) |
+| `starStep` | `[[0,3],[18,7],[30,'grow']]` | [W]/[R] star cost steps: 3 below index 18, 7 below 30, then `7 + starStepGrow·(j−29)` |
+| `starStepGrow` | 1 | [R] star cost growth past index 30 (TUNE key added in Task 14, value unchanged) |
 | `dtRunDiv`, `dtMin`, `dtMax`, `dtFixed` | 50, 0.1, 2, 1 | adaptive step (§9.1) |
 
 ---
@@ -627,7 +628,8 @@ Game time equals wall time for a player on this schedule. "t∞" is game time si
 | Run length at Infinity 11 | 25–35 min | ≥ 15 min |
 | All 4 automations owned (9 IP) | by Infinity 8 | — |
 | 7;1 bought (Challenges) | t∞ 10–16 h | ≥ 8 h |
-| IC1, 2, 3, 5, 6, 7, 8 (each attempt, start → completion) | 30–90 min | ≥ 15 min |
+| IC1, 2, 3 (each attempt, start → completion) | 30–90 min | ≥ 15 min |
+| IC5, 6, 7, 8 (each attempt) | informational: expected minutes | no floor — faithful to the wiki handicaps (controller ruling, Task 14) |
 | IC4 and IC9 (each attempt) | 3–6 h | ≥ 2 h |
 | All 9 ICs → Break unlocked | t∞ 2–4 days (48–96 h) | ≥ 40 h |
 | Col 17 (1e6 IP) | Break + 1–2 days | ≥ Break + 16 h |
@@ -651,32 +653,38 @@ Wiki [W] numbers change only as a last resort. Any such change is recorded in a 
 
 ### 12.4 Calibration results (Task 14)
 
-Changed: `genRate` 1 → 0.0025, `u52K` 0.1 → 0.01, `u62K` 0.25 → 0.01, `ic4Pow` 0.4 → 0.32 [W], `ic9Circles` 4 → 3 [W] (new TUNE key). Full `MODE=layer DAYS=16` run (stepped; `OFFLINE=1` agrees within ±15% on every row; Phase B `NOSKIP=1` replay agrees on Break):
+Changed: `genRate` 1 → 0.0025, `u52K` 0.1 → 0.01, `u62K` 0.25 → 0.01, `passiveInfK` 2 → 0.2, and the wiki values `ic4Pow` 0.4 → 0.32, `ic9Circles` 4 → 3 (new TUNE key), `breakStartLog`/`breakStepLog` 2772/308 → 4100/74 (see Deviations). Engine ruling: the P.Exp prestige gain reads `min(scoreLog, INFINITY_LOG)` (§3), because Revolution-stage formulas are defined up to Infinity. Without it a broken run diverges within seconds. The change is bit-identical before Break.
 
-| Milestone | Result (game t / t∞) | Target | Status |
+Full `MODE=layer DAYS=16 CHECK=1` run. The stepped and `OFFLINE=1` runs agree within ±15% on every row, and the Phase B `NOSKIP=1` replay agrees on Break. Wall time is about 4 min.
+
+| Milestone | Result (t∞ unless noted) | Target | Status |
 |---|---|---|---|
 | 1st Infinity | 3h22m04s | 3h22m ±10% | PASS |
 | 2nd Infinity run | 1h32m | 80–100 min | PASS |
 | 3rd Infinity run | 1h03m | 50–70 min | PASS |
 | Run at Infinity 11 | 26m | 25–35 min | PASS |
 | All 4 automations | Infinity 7 | by Infinity 8 | PASS |
-| 7;1 bought | t∞ 11h18m (day 0.47) | 10–16 h | PASS |
+| 7;1 bought | 11h18m | 10–16 h | PASS |
 | IC1 / IC2 | 25m / 25m | 30–90 min (floor 15) | below target, above floor |
 | IC3 | 37m | 30–90 min | PASS |
 | IC4 | 3h38m | 3–6 h | PASS |
-| IC5 / IC6 / IC7 | 1m33s / 29s / 18s | 30–90 min (floor 15) | FAIL (below floor) |
-| IC8 | 11m | 30–90 min (floor 15) | FAIL (below floor) |
+| IC5 / IC6 / IC7 / IC8 | 1m33s / 29s / 18s / 11m | informational | INFO (ruling) |
 | IC9 | 3h44m | 3–6 h | PASS |
-| Break unlocked | t∞ 45h02m (day 1.88) | 48–96 h (floor 40) | below target, above floor |
-| Col 17 / First Star / Finale | t∞ 2d07h / 2d11h / 2d15h | Break+1–2 d / 5–8 d / 7–14 d | FAIL — see open issue below |
+| Break unlocked | 45h02m (day 1.88) | 48–96 h (floor 40) | below target, above floor |
+| Col 17 (1e6 IP) | 2d07h (Break + about 4 h after the Break check-in) | Break + 1–2 d (floor + 16 h) | FAIL |
+| First Star | 5d20h | 5–8 d | PASS |
+| Finale | 11d15h | 7–14 d | PASS |
 
-**Open issue (blocks Phase C calibration):** while broken, the shipped prestige rule `pExp = 1 + (scoreLog − 5)/225 · …` with `prestigeReqLog = scoreLog` diverges: once Σ multLog exceeds ~225/pExpMult each prestige multiplies pExp, so a broken run goes from e783 to e10^12 score within ~5 s, and the break bonus pays any IP up to the cap in one run. Post-Break pacing is then set only by the auto-Infinity threshold, not by any TUNE value. Capping the score used for the P.Exp gain at `INFINITY_LOG` (bit-identical while fixed) makes broken runs saturate near e5,000 and restores a tunable Phase C; that needs a spec ruling before §12.2's Phase C rows can be calibrated.
+**IC5–IC8 (ruling):** these are faithful to the wiki handicaps. They start when normal runs last 11–30 s and are expected to take minutes, so they are reported without a target.
 
-**Why IC5–IC8 miss:** these attempts start when normal runs last 11–30 s (the [W] tree multipliers, the ∞-scaled G1 bonus and the IC1–IC4 rewards compound through Phase B). IC5–IC8 handicaps only multiply that by ×1–×50: `ic5Nerf` saturates near 10 min even at 0.003, `ic6Decay` jumps from under 1 min (0.98) to impossible (0.99) and is step-size fragile, and IC7/IC8 have no [R] lever. Meeting them would take [W] handicap changes beyond the listed last-resort levers.
+**Why Col 17 misses:** IP is already about e5.2 when Infinity is broken. The IP comes from Phase B's [W] multipliers (×(1+ICs), ×2 at the 5th Infinity, ×2 for IC4), from runs lasting seconds, and from buying columns 15–16 before Break. At about e2.5 IP per few-second run, 1e6 arrives within hours whatever the break bonus. The listed levers (`icRefSec`, `ctfMax`, `u161Pow`) act on factors of ×1–×6 and cannot hold IP below 1e6 for 16 h.
+
+**Why Break is at 45 h:** the time is set by the one-IC-per-check-in cadence and the night gaps. IC9 completes during the evening of day 1.
 
 ### Deviations
 
 - **IC4 gain power 0.4 → 0.32.** With 0.4 the IC4 attempt at its gate (first G2) took about 1 h; the target is 3–6 h. `ic4Pow` is the spec's last-resort lever for IC4. The value sits near a cliff (0.30 does not complete within 12 h).
+- **Break bonus `breakStartLog`/`breakStepLog` 2772/308 → 4100/74.** With the P.Exp clamp, broken runs saturate at score e4,000–e27,000 over the layer. Wiki numbers would need about e95,000 for 1.79e308 IP (they reach only e12 IP by day 16). A lower step alone makes the layer explode at Break. A start near the score reached at Break (about e4,000) with a step of 74 gives a smooth takeoff: Star at about 5.8 d and the finale at about 11.6 d. Stepped, OFFLINE and NOSKIP runs agree. `passiveInfK` 2 → 0.2 ([R]) keeps passive ∞ from dominating the late game.
 - **IC9 circles 4 → 3.** With 4 colours the attempt took 29–45 min, because normal runs at the gate last about 11 s. There is no [R] lever for IC9, and the circle count is the spec's last-resort lever. With 3 colours it takes about 3 h 44 min.
 
 ## 13. Sim changes (`test/sim.js`)

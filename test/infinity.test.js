@@ -199,11 +199,17 @@ test('infGain doubles after IC9', () => {
   const s = E.newState(); assert.equal(E.infGain(s), 1); s.inf.ic.done[8] = true; assert.equal(E.infGain(s), 2);
 });
 
-test('breakBonusLog: x10 at e3080, x100 at e3388; only broken and outside challenges', () => {
+test('breakBonusLog: x10 per breakStepLog past breakStartLog; only broken and outside challenges', () => {
   const s = E.newState(); s.inf.broken = true;
-  s.scoreLog = 3079.9; assert.equal(E.breakBonusLog(s), 0);
-  s.scoreLog = 3080; assert.equal(E.breakBonusLog(s), 1);
-  s.scoreLog = 3388; assert.equal(E.breakBonusLog(s), 2);
+  const S = E.TUNE.breakStartLog, D = E.TUNE.breakStepLog; // tuned (wiki: 2772, 308 -> x10 at e3080, x100 at e3388)
+  s.scoreLog = S + D - 0.1; assert.equal(E.breakBonusLog(s), 0);
+  s.scoreLog = S + D; assert.equal(E.breakBonusLog(s), 1);
+  s.scoreLog = S + 2 * D; assert.equal(E.breakBonusLog(s), 2);
+  withTune({ breakStartLog: 2772, breakStepLog: 308 }, () => {
+    s.scoreLog = 3079.9; assert.equal(E.breakBonusLog(s), 0);
+    s.scoreLog = 3080; assert.equal(E.breakBonusLog(s), 1);
+    s.scoreLog = 3388; assert.equal(E.breakBonusLog(s), 2);
+  });
   s.inf.ic.active = 2; assert.equal(E.breakBonusLog(s), 0);
   s.inf.ic.active = 0; s.inf.broken = false; assert.equal(E.breakBonusLog(s), 0);
 });
@@ -830,4 +836,25 @@ for (const autoOn of [true, false]) test(`large dt steps do not blow up generato
   E.tick(s, 60); // a much bigger single step, still far short of an 8h-offline-sized jump
   cur = snapshot();
   assertSane(prev, cur);
+});
+
+// Ruling (Task 14 round 2): Revolution-stage prestige formulas are defined up
+// to Infinity. While broken, the P.Exp gain reads min(scoreLog, INFINITY_LOG);
+// otherwise pExp compounds each prestige and a broken run diverges in seconds.
+test('broken: P.Exp gain is bounded by the Infinity score', () => {
+  const s = E.newState(); s.inf.broken = true; s.inf.ic.done = Array(9).fill(true);
+  s.scoreLog = 5000;
+  const g = E.pendingPrestige(s);
+  close(g.pExp, 1 + (E.INFINITY_LOG - 5) / E.TUNE.pExpDiv);
+  s.scoreLog = 1e6; assert.equal(E.pendingPrestige(s).pExp, g.pExp);
+  // P.Mult is polynomial in scoreLog, so it is left unclamped (log-additive, no runaway).
+  close(E.pendingPrestige(s).pMult, E.TUNE.pMultBase * (1e6 - 3) ** E.TUNE.pMultPow);
+});
+
+test('pre-Break P.Exp gain is unchanged (score at or below Infinity)', () => {
+  const s = E.newState();
+  for (const sc of [3, 12.5, 150, 300, E.INFINITY_LOG]) {
+    s.scoreLog = sc;
+    assert.equal(E.pendingPrestige(s).pExp, 1 + (Math.max(0, sc - 5) / E.TUNE.pExpDiv));
+  }
 });

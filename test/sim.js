@@ -34,7 +34,7 @@
 // Idle-profile campaign per spec §12.1/§13, from a fresh game (or a
 // snapshot) through the finale, capped at DAYS simulated days.
 // Env:   DAYS=<n>        stop after n simulated days (default 16)
-//        CHECK=1         exit 1 on any FAIL row or wall budget (300 s)
+//        CHECK=1         exit 1 on any FAIL row (IC5-IC8 rows are INFO only) or wall budget (300 s)
 //                         exceeded; also replays Phase B with NOSKIP=1 and
 //                         compares Break timing (>10% diff FAILs), and runs
 //                         an OFFLINE=1 comparison against the stepped run
@@ -42,9 +42,9 @@
 //        NOSKIP=1        disable macro-step extrapolation
 //        FROM=<name>     resume from .sim/<name>.json (phaseB-start,
 //                         phaseC-start, stars-start)
-//        OFFLINE=1       each night gap runs as one E.simulate(s, 8*3600)
-//                         call (default step, no dtMin override), like the
-//                         UI's offline catch-up, instead of stepping through it.
+//        OFFLINE=1       each night gap runs through E.simulate (default step,
+//                         no dtMin override) in 300 s chunks, like the UI's
+//                         chunked offline catch-up, instead of the sim's stepping.
 //        VERBOSE=1       print a line per Infinity
 //        DIAG=1          print a line of state (t∞, ∞, IP, last run, gens, ICs, stars) per check-in
 //        QUIET=1         only print the summary line
@@ -216,9 +216,12 @@ function runFirst() {
 
 const DAYS = Number(process.env.DAYS || 16);
 const CHECK = !!process.env.CHECK;
-const NOSKIP = !!process.env.NOSKIP;
+// NOSKIP/OFFLINE are read at call time: CHECK=1 flips process.env for its
+// internal OFFLINE and NOSKIP replays, so a load-time constant would make
+// those replays silently identical to the primary run.
+const isNoSkip = () => !!process.env.NOSKIP;
 const FROM = process.env.FROM || null;
-const OFFLINE = !!process.env.OFFLINE;
+const isOffline = () => !!process.env.OFFLINE;
 const VERBOSE = !!process.env.VERBOSE;
 const SNAPIC = !!process.env.SNAPIC; // also snapshot .sim/ic<n>-start.json at each IC's first attempt
 const DIAG = !!process.env.DIAG; // one line of state per check-in
@@ -394,7 +397,7 @@ function handleBreak(s, t, ctx) {
   }
   if (E.hasUpg(s, '15;1')) {
     s.inf.auto.infinity.on = true;
-    s.inf.auto.infinity.minIpLog = ctx.peakIpPerMinLog;
+    s.inf.auto.infinity.minIpLog = probeBestMinIpLog(s);
   } else if (E.isFixed(s) && E.canInfinity(s)) {
     // Auto-Infinity not owned yet: go infinite manually at check-ins only.
     E.goInfinite(s);
@@ -402,28 +405,28 @@ function handleBreak(s, t, ctx) {
   }
 }
 
-// Tracks the IP-per-minute peak of the *current* run, so handleBreak can set
-// minIpLog to "the IP gain the previous run reached at the moment its
-// IP-per-minute peaked" (spec §13.4). Rate = ipGainLog - log10(max(1, t/60)).
-// Sampled every step while broken (the break bonus moves in x10 steps, and
-// post-Break runs can be seconds long, so a coarse 10 s sample misses them).
-// ctx.curRunPeak is the peak rate, ctx.curRunPeakGain the gain at that peak.
-function ipRate(gainLog, t) { return gainLog - Math.log10(Math.max(1, t / 60)); }
-function sampleIpRate(s, ctx) {
-  if (!s.inf.broken || s.inf.ic.active || s.inf.t <= 0) return;
-  const g = E.ipGainLog(s);
-  const rate = ipRate(g, s.inf.t);
-  if (rate > ctx.curRunPeak) { ctx.curRunPeak = rate; ctx.curRunPeakGain = g; }
-}
-// Called once per completed Infinity with its final {t, ipGainLog}. The run
-// ended at minIpLog, so if its rate was still at its peak at the very end the
-// optimum lies beyond the threshold: explore one x10 step further next time.
-function closeIpRateRun(s, ctx, last) {
-  if (!s.inf.broken || !last) { ctx.curRunPeak = -Infinity; return; }
-  const endRate = ipRate(last.ipGainLog, last.t);
-  if (endRate >= ctx.curRunPeak - 1e-9) ctx.peakIpPerMinLog = last.ipGainLog + 1;
-  else ctx.peakIpPerMinLog = ctx.curRunPeakGain;
-  ctx.curRunPeak = -Infinity;
+// Break-mode auto-Infinity threshold (spec §13.4: "the IP gain the run
+// reached at the moment its IP-per-minute peaked"). A run cut at minIpLog
+// never shows what lies beyond the threshold, so the bot reads the IP bar
+// the way a player does: at each check-in it plays one fresh run ahead on a
+// clone (auto-Infinity off, up to PROBE_SEC) and picks the gain at the peak
+// of ipGain / max(1 min, t). The real state is untouched.
+const PROBE_SEC = 2 * 3600;
+function probeBestMinIpLog(s) {
+  const c = E.deserialize(E.serialize(s));
+  E.resetForChallenge(c);
+  c.inf.auto.infinity.on = false;
+  let t = 0, bestRate = -Infinity, bestGain = 0, bestT = 0;
+  while (t < PROBE_SEC) {
+    const dt = E.adaptiveDt(c, { dtMin: 0.1, dtMax: 2 });
+    E.tick(c, dt); t += dt;
+    if (!E.canInfinity(c)) continue;
+    const g = E.ipGainLog(c);
+    const rate = g - Math.log10(Math.max(1, t / 60));
+    if (rate > bestRate + 1e-9) { bestRate = rate; bestGain = g; bestT = t; }
+    if (t > 600 && t > 4 * bestT) break; // well past the peak
+  }
+  return bestGain;
 }
 
 function doCheckin(s, t, ctx) {
@@ -457,10 +460,10 @@ const MILESTONE_DEFS = [
   { key: 'ic2', name: 'IC2 attempt', mode: 'dur', lo: 1800, hi: 5400, floor: 900 },
   { key: 'ic3', name: 'IC3 attempt', mode: 'dur', lo: 1800, hi: 5400, floor: 900 },
   { key: 'ic4', name: 'IC4 attempt', mode: 'dur', lo: 10800, hi: 21600, floor: 7200 },
-  { key: 'ic5', name: 'IC5 attempt', mode: 'dur', lo: 1800, hi: 5400, floor: 900 },
-  { key: 'ic6', name: 'IC6 attempt', mode: 'dur', lo: 1800, hi: 5400, floor: 900 },
-  { key: 'ic7', name: 'IC7 attempt', mode: 'dur', lo: 1800, hi: 5400, floor: 900 },
-  { key: 'ic8', name: 'IC8 attempt', mode: 'dur', lo: 1800, hi: 5400, floor: 900 },
+  { key: 'ic5', name: 'IC5 attempt', mode: 'dur', lo: null, hi: null, floor: null, info: true },
+  { key: 'ic6', name: 'IC6 attempt', mode: 'dur', lo: null, hi: null, floor: null, info: true },
+  { key: 'ic7', name: 'IC7 attempt', mode: 'dur', lo: null, hi: null, floor: null, info: true },
+  { key: 'ic8', name: 'IC8 attempt', mode: 'dur', lo: null, hi: null, floor: null, info: true },
   { key: 'ic9', name: 'IC9 attempt', mode: 'dur', lo: 10800, hi: 21600, floor: 7200 },
   { key: 'break', name: 'All 9 ICs -> Break unlocked (t∞)', mode: 'tinf', lo: 172800, hi: 345600, floor: 144000 },
   { key: 'col17', name: 'Col 17 (1e6 IP) (t∞)', mode: 'tinf', lo: null, hi: null, floor: null }, // relative to Break; computed below
@@ -470,6 +473,9 @@ const MILESTONE_DEFS = [
 
 function passFail(def, value, ctx) {
   if (value === null || value === undefined) return '-';
+  // Controller ruling (Task 14): IC5-IC8 are faithful to the wiki handicaps
+  // and expected to take minutes; reported, never a FAIL.
+  if (def.info) return 'INFO';
   if (def.key === 'col17') {
     if (ctx.breakT === null) return '-';
     const rel = value - ctx.breakT;
@@ -496,6 +502,7 @@ function printMilestoneTable(m, ctx) {
     let targetStr;
     if (def.key === 'col17') targetStr = 'Break+1-2d / floor Break+16h';
     else if (def.mode === 'idx') targetStr = `<= Infinity ${def.hi}`;
+    else if (def.info) targetStr = 'informational (minutes)';
     else targetStr = `${fmtT(def.lo)}-${fmtT(def.hi)} / floor ${fmtT(def.floor)}`;
     console.log(def.name.padEnd(34), gameT.padEnd(12), tInf.padEnd(12), day.padEnd(8), targetStr.padEnd(28), result);
   }
@@ -540,6 +547,10 @@ function checkPostRunMilestones(s, ctx, beforeIcDone, icCompletedList) {
   if (s.inf.ipLog >= E.INFINITY_LOG) recordMilestone(ctx.milestones, 'finale', ctx.t, ctx.tInf1, tInf);
 }
 
+// An Infinity happened iff goInfinite pushed a new stats.lastInfinities entry.
+// (s.infinities is not usable: 18;1 raises it passively every tick.)
+function lastInfRef(s) { const l = s.stats.lastInfinities; return l.length ? l[l.length - 1] : null; }
+
 // ---- macro-stepping (spec §13 strategy 2) --------------------------------
 
 // After every completed Infinity, this pushes {runTime, ipGainLog, infGain}
@@ -550,7 +561,7 @@ function noteInfinity(ctx, runTime, ipGainLog, infGain) {
 }
 
 function macroStepEligible(s, ctx) {
-  if (NOSKIP) return false;
+  if (isNoSkip()) return false;
   if (ctx.purchased) return false;
   if (s.inf.ic.active !== 0) return false;
   if (ctx.last5.length < 5) return false;
@@ -620,7 +631,7 @@ function chooseMacroK(s, ctx, runTime, ipGainLog, infGain, untilCheckin) {
 // running macro-steps opportunistically between Infinities.
 function advanceTo(s, ctx, targetT, m) {
   while (ctx.t < targetT - 1e-9) {
-    const beforeInf = s.infinities;
+    const beforeInf = lastInfRef(s);
     const beforeIcDone = s.inf.ic.done.slice();
     const runStartT = s.inf.t === 0 ? ctx.t : null;
     let dt = E.adaptiveDt(s, { dtMin: 0.1, dtMax: 2 });
@@ -628,9 +639,8 @@ function advanceTo(s, ctx, targetT, m) {
     if (dt <= 0) break;
     E.tick(s, dt);
     ctx.t += dt;
-    sampleIpRate(s, ctx);
     if (s.inf.pendingConfirm) { E.goInfinite(s); }
-    if (s.infinities > beforeInf) {
+    if (lastInfRef(s) !== beforeInf) {
       const runTime = s.inf.tRun === 0 ? (m && m.lastRunTime) || dt : null; // inf.t already reset by goInfinite
       // inf.t/tRun reset inside goInfinite; recover run length from the
       // stats.lastInfinities entry pushed by goInfinite itself.
@@ -651,7 +661,6 @@ function advanceTo(s, ctx, targetT, m) {
       if (ctx.infinityIndex === 2) recordMilestone(ctx.milestones, 'run2', ctx.t, ctx.tInf1, rt);
       if (ctx.infinityIndex === 3) recordMilestone(ctx.milestones, 'run3', ctx.t, ctx.tInf1, rt);
       if (ctx.infinityIndex === 11) recordMilestone(ctx.milestones, 'run11', ctx.t, ctx.tInf1, rt);
-      closeIpRateRun(s, ctx, last);
     }
     checkPostRunMilestones(s, ctx, beforeIcDone);
 
@@ -674,6 +683,7 @@ function fourOwnedCheckAndMilestone(s, ctx) {
 const DAY_SCHEDULE = [0, 3, 6, 9, 12, 15]; // hours within the 16 h day
 const CYCLE_SEC = 24 * 3600;
 const NIGHT_SEC = 8 * 3600;
+const OFFLINE_CHUNK_SEC = 300;
 
 function runLayerCore(startState, startT, startTInf1, endT, opts) {
   opts = opts || {};
@@ -691,9 +701,6 @@ function runLayerCore(startState, startT, startTInf1, endT, opts) {
     icReplayIdx: 0,
     dayFirstCheckin: false,
     breakT: null,
-    curRunPeak: -Infinity,
-    curRunPeakGain: 0,
-    peakIpPerMinLog: 0,
     last5: [],
     lastInfGain: 1,
     macroStepCount: 0,
@@ -709,11 +716,10 @@ function runLayerCore(startState, startT, startTInf1, endT, opts) {
     // and running the greedy bot manually for anything not yet automated.
     const dt = Math.min(0.1, endT - ctx.t);
     if (dt <= 0) break;
-    const beforeInf = s.infinities;
+    const beforeInf = lastInfRef(s);
     const beforeIcDone = s.inf.ic.done.slice();
     E.tick(s, dt);
     ctx.t += dt;
-    sampleIpRate(s, ctx);
     if (!fourAutomationsOwned(s)) {
       // Perform any action whose automation is not yet owned.
       const u = E.autoUnlocked(s);
@@ -744,7 +750,7 @@ function runLayerCore(startState, startT, startTInf1, endT, opts) {
       }
     }
     if (s.inf.pendingConfirm) E.goInfinite(s);
-    if (s.infinities > beforeInf) {
+    if (lastInfRef(s) !== beforeInf) {
       const last = s.stats.lastInfinities[s.stats.lastInfinities.length - 1];
       const rt = last ? last.t : dt;
       if (ctx.tInf1 === null) ctx.tInf1 = ctx.t;
@@ -754,7 +760,6 @@ function runLayerCore(startState, startT, startTInf1, endT, opts) {
       if (ctx.infinityIndex === 2) recordMilestone(ctx.milestones, 'run2', ctx.t, ctx.tInf1, rt);
       if (ctx.infinityIndex === 3) recordMilestone(ctx.milestones, 'run3', ctx.t, ctx.tInf1, rt);
       if (ctx.infinityIndex === 11) recordMilestone(ctx.milestones, 'run11', ctx.t, ctx.tInf1, rt);
-      ctx.curRunPeak = -Infinity;
       // Active profile: this is a check-in.
       doCheckin(s, ctx.t, ctx);
       writeSnapshotOnPhase(s, ctx);
@@ -772,18 +777,23 @@ function runLayerCore(startState, startT, startTInf1, endT, opts) {
       const targetT = idleStartT + dayIdx * CYCLE_SEC + DAY_SCHEDULE[schedIdx] * 3600;
       if (targetT > ctx.t) {
         const isNightGap = schedIdx === 0 && dayIdx > 0; // gap right before hour0 of a later day
-        if (isNightGap && OFFLINE) {
-          // Controller ruling: default step, no dtMin override, one call for
-          // the whole 8 h gap.
-          const remaining = Math.min(NIGHT_SEC, endT - ctx.t, targetT - ctx.t);
-          if (remaining > 0) {
-            const beforeInf = s.infinities;
+        if (isNightGap && isOffline()) {
+          // Controller ruling: default step, no dtMin override. The gap runs
+          // as consecutive 300 s simulate() calls, like the UI's chunked
+          // catch-up (Task 10 ruling: chunked == one call), so an IC that
+          // completes inside the night is timed to within 5 min instead of
+          // being stamped at the end of the 8 h gap.
+          let remaining = Math.min(NIGHT_SEC, endT - ctx.t, targetT - ctx.t);
+          while (remaining > 1e-9) {
+            const chunk = Math.min(OFFLINE_CHUNK_SEC, remaining);
+            const beforeInf = lastInfRef(s);
+            const beforeInfN = s.stats.lastInfinities.length;
             const beforeIcDone = s.inf.ic.done.slice();
-            const result = E.simulate(s, remaining);
-            ctx.t += remaining;
-            if (s.infinities > beforeInf) {
+            const result = E.simulate(s, chunk);
+            ctx.t += chunk; remaining -= chunk;
+            if (lastInfRef(s) !== beforeInf) {
               const last = s.stats.lastInfinities[s.stats.lastInfinities.length - 1];
-              if (last) { ctx.infinityIndex += Math.max(1, Math.round(s.infinities - beforeInf)); recordMilestone(ctx.milestones, 'inf1', ctx.t, ctx.tInf1, ctx.t); }
+              if (last) { ctx.infinityIndex += Math.max(1, s.stats.lastInfinities.length - beforeInfN); recordMilestone(ctx.milestones, 'inf1', ctx.t, ctx.tInf1, ctx.t); }
             }
             checkPostRunMilestones(s, ctx, beforeIcDone, result.icCompleted);
           }
@@ -805,6 +815,7 @@ function runLayerCore(startState, startT, startTInf1, endT, opts) {
 }
 
 function writeSnapshotOnPhase(s, ctx) {
+  if (FROM) return; // never overwrite the snapshots a FROM run starts from
   if (!ctx._wrote7_1 && E.hasUpg(s, '7;1')) { ctx._wrote7_1 = true; writeSnapshot('phaseB-start', ctx.t, ctx.tInf1, s); }
   if (!ctx._wroteBreak && s.inf.broken) { ctx._wroteBreak = true; writeSnapshot('phaseC-start', ctx.t, ctx.tInf1, s); }
   if (!ctx._wroteStar && s.inf.stars.n >= 1) { ctx._wroteStar = true; writeSnapshot('stars-start', ctx.t, ctx.tInf1, s); }
@@ -839,6 +850,7 @@ function runLayer() {
   const wall = (Date.now() - wall0) / 1000;
 
   if (!QUIET) printMilestoneTable(ctx.milestones, ctx);
+  const OFFLINE = isOffline();
   console.log(`Wall time (MODE=layer${OFFLINE ? ' OFFLINE=1' : ''}): ${wall.toFixed(2)}s`);
 
   let anyFail = false;

@@ -5,7 +5,7 @@
   const LOG2 = Math.log10(2);
   E._inf = { LOG2 }; // internal scratch shared by later sections of this file
 
-  Object.assign(E.TUNE, { ipBase: 1, breakStartLog: 2772, breakStepLog: 308 });
+  Object.assign(E.TUNE, { ipBase: 1, breakStartLog: 4100, breakStepLog: 74 }); // wiki 2772, 308 — see spec Deviations
   Object.assign(E.TUNE, { ic1Boost: 1.5, ic5Nerf: 0.25, ic5Reward: 1.1, ic6Decay: 0.01, ic4Pow: 0.32, ic9Circles: 3 });
   Object.assign(E.TUNE, {
     genRate: 0.0025, gpExp0: 0.666, genSoftcapLog: 1000,
@@ -14,9 +14,9 @@
   Object.assign(E.TUNE, {
     u51Div: 600, u51Cap: 10, u52K: 0.01, u62K: 0.01, u162K: 0.05, u8TimeDiv: 60,
     u121Pow: 0.5, u171Pow: 0.25, u161Pow: 0.2, u141K: 0.1,
-    icRefSec: 36000, ctfMax: 1e4, u163Ref: 3600, passiveInfK: 2, u201Ref: 600, u201Cap: 100,
+    icRefSec: 36000, ctfMax: 1e4, u163Ref: 3600, passiveInfK: 0.2, u201Ref: 600, u201Cap: 100,
     gpExp14: 0.75, gpExp19: 0.9,
-    starBaseCost: [34, 4], starExpCost: [35, 5], starExpMax: 12,
+    starBaseCost: [34, 4], starExpCost: [35, 5], starExpMax: 12, starStepGrow: 1,
     sdUpgCost: [[1, 2], [Math.log10(20), 1], [Math.log10(50), Math.log10(3)], [2, Math.log10(2)]], sdUpgMax: [9, Infinity, 50, 85],
   });
   const I = E._inf; I.MOD_FNS = []; I.IP_FNS = []; I.PRE_FNS = []; I.GEN_FNS = []; I.GPEXP_FNS = [];
@@ -403,7 +403,7 @@
     const n = s.inf.stars.n;
     let cost = 33;
     for (let j = 0; j < n; j++) {
-      const step = j < 18 ? 3 : j < 30 ? 7 : 7 + (j - 29);
+      const step = j < 18 ? 3 : j < 30 ? 7 : 7 + E.TUNE.starStepGrow * (j - 29); // [W] 3, 7; [R] growth
       cost += step;
     }
     return cost;

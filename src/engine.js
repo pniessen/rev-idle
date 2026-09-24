@@ -362,7 +362,10 @@ const Engine = (() => {
     if (s.scoreLog < 3) return { pMult: 1, pExp: 1 };
     m = m || mods(s);
     const pMult = Math.pow(rawPendingPMult(s, m), m.gainPow);
-    const pExp = 1 + (Math.max(0, s.scoreLog - 5) / TUNE.pExpDiv) * m.pExpMult * m.gainPow;
+    // Revolution-stage formulas are defined up to Infinity: while broken the
+    // P.Exp gain reads the score capped at INFINITY_LOG (identical before Break),
+    // otherwise pExp compounds each prestige and a broken run diverges.
+    const pExp = 1 + (Math.max(0, Math.min(s.scoreLog, INFINITY_LOG) - 5) / TUNE.pExpDiv) * m.pExpMult * m.gainPow;
     return { pMult, pExp };
   }
 
