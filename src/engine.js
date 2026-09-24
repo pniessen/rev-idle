@@ -122,23 +122,78 @@ const Engine = (() => {
 
   // --- merge / migrate ---
 
+  // Fills missing keys from the defaults and coerces type-mismatched leaves
+  // back to them (hostile or corrupt imports): a number default needs a
+  // finite number (or -Infinity where the default is -Infinity, the log-zero),
+  // a null default (fastestInfinity, IC best times) needs null or a finite
+  // number >= 0, a boolean default a boolean. Default-empty arrays
+  // (stats.lastInfinities) keep only plain-object entries; default-empty
+  // objects (inf.upg) keep only `true` flags.
   function mergeDefaults(def, obj) {
     if (Array.isArray(def)) {
       if (!Array.isArray(obj)) return def;
-      if (def.length === 0) return obj.slice();
+      if (def.length === 0) return obj.filter((x) => x !== null && typeof x === 'object' && !Array.isArray(x));
       return def.map((d, i) => (i < obj.length ? mergeDefaults(d, obj[i]) : d));
     }
-    if (def !== null && typeof def === 'object') {
+    if (def === null) return typeof obj === 'number' && Number.isFinite(obj) && obj >= 0 ? obj : null;
+    if (typeof def === 'object') {
       if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) return def;
       const keys = Object.keys(def);
-      if (keys.length === 0) return Object.assign({}, obj);
+      if (keys.length === 0) {
+        const out = {};
+        for (const k of Object.keys(obj)) if (obj[k] === true && k !== '__proto__') out[k] = true;
+        return out;
+      }
       const out = {};
       for (const k of keys) {
         out[k] = k in obj ? mergeDefaults(def[k], obj[k]) : def[k];
       }
       return out;
     }
-    return obj === undefined ? def : obj;
+    if (typeof def === 'number') {
+      if (typeof obj !== 'number' || Number.isNaN(obj)) return def;
+      if (Number.isFinite(obj) || (obj === -Infinity && def === -Infinity)) return obj;
+      return def;
+    }
+    return typeof obj === typeof def ? obj : def;
+  }
+
+  const nonNegInt = (x, max) => Math.min(max, Math.max(0, Math.floor(x)));
+
+  // Clamps values the type check alone lets through but the formulas cannot
+  // take (spec §3 invariants): multipliers below 1, negative or fractional
+  // levels and counts, out-of-range indices. Caps on counts that drive
+  // O(n) loops (ascensions, stars) are far above anything reachable.
+  function sanitize(s) {
+    s.pMult = Math.max(1, s.pMult); s.pExp = Math.max(1, s.pExp);
+    s.promo = s.promo.map((x) => nonNegInt(x, 1e15));
+    s.infinities = Math.max(0, s.infinities);
+    for (const c of s.circles) {
+      c.ascensions = nonNegInt(c.ascensions, 1e5);
+      c.level = nonNegInt(c.level, levelCap(c)); c.bought = nonNegInt(c.bought, 1e15); c.laps = Math.max(0, c.laps);
+      if (!(c.progress >= 0 && c.progress < 1)) c.progress = 0;
+      c.multLog = Math.max(0, c.multLog);
+    }
+    if (!s.circles[0].unlocked) s.circles[0].unlocked = true;
+    const st = s.stats;
+    st.lastInfinities = st.lastInfinities
+      .filter((e) => typeof e.t === 'number' && Number.isFinite(e.t) && typeof e.ipGainLog === 'number' && Number.isFinite(e.ipGainLog))
+      .map((e) => ({ t: Math.max(0, e.t), ipGainLog: e.ipGainLog })).slice(-10);
+    for (const k of ['totalLaps', 'prestiges', 'promotions', 'playTime']) st[k] = Math.max(0, st[k]);
+    const f = s.inf;
+    f.t = Math.max(0, f.t); f.tRun = Math.max(0, f.tRun);
+    f.gens.forEach((g) => { g.b = nonNegInt(g.b, 1e15); });
+    f.ic.active = nonNegInt(f.ic.active, 9);
+    const st2 = f.stars;
+    st2.n = nonNegInt(st2.n, 1e4); st2.nb = nonNegInt(st2.nb, 1e6); st2.ne = nonNegInt(st2.ne, 1e6);
+    st2.sdU = st2.sdU.map((x) => nonNegInt(x, 1e15));
+    const a = f.auto;
+    const ord = a.promote.order;
+    if (ord.some((k) => !Number.isInteger(k) || k < 0 || k > 3)) a.promote.order = [0, 1, 2, 3];
+    a.promote.xFactor = Math.max(1, a.promote.xFactor); a.prestige.multX = Math.max(1, a.prestige.multX);
+    for (const o of [a.promote, a.prestige, a.infinity]) o.minTime = Math.max(0, o.minTime);
+    a.prestige.expGain = Math.max(0, a.prestige.expGain); a.stallSec = Math.max(0, a.stallSec);
+    return s;
   }
 
   function migrate(obj) {
@@ -149,7 +204,7 @@ const Engine = (() => {
     if (obj.v === 1) {
       obj.inf = Object.assign({}, obj.inf, { ipLog: obj.ip > 0 ? Math.log10(obj.ip) : -Infinity });
     }
-    return Object.assign(mergeDefaults(newState(), obj), { v: 2 });
+    return sanitize(Object.assign(mergeDefaults(newState(), obj), { v: 2 }));
   }
 
   // --- formulas ---

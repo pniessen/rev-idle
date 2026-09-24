@@ -935,3 +935,49 @@ test('every data-tip key has TIPS copy that renders on fresh and late states', (
     }
   }
 });
+
+// Final review Important 4: a hostile/corrupt import must not hang the tick
+// (autoBuy spun forever on a NaN level budget) or poison the state with NaN.
+// Engine runs in a vm context so a regression times out instead of hanging.
+test('hostile import: seeded single-field mutations never throw, hang or poison', () => {
+  const vm = require('node:vm'); const fs = require('node:fs'); const path = require('node:path');
+  const ctx = vm.createContext({ window: {}, Buffer });
+  for (const f of ['engine.js', 'engine-infinity.js', 'engine-auto.js']) {
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../src', f), 'utf8').replace(/^const Engine =/m, 'var Engine ='), ctx);
+  }
+  const base = E.newState();
+  base.infinities = 5; base.inf.ipLog = 40; base.scoreLog = 100; base.pMult = 1e6; base.pExp = 1.5; base.promo = [3, 2, 1, 1];
+  for (const u of E.UPGRADES) base.inf.upg[u.id] = true;
+  base.inf.gens[0] = { b: 3, aLog: 1 }; base.inf.gens[1] = { b: 1, aLog: 0 }; base.inf.stars.n = 3; base.inf.stars.sdU = [1, 1, 1, 1];
+  base.stats.fastestInfinity = 100; base.stats.lastInfinities = [{ t: 100, ipGainLog: 3 }];
+  base.inf.ic.done.fill(true); base.inf.ic.best.fill(60);
+  base.circles.forEach((c, i) => { c.unlocked = i < 5; c.level = 20; c.bought = 20; c.ascensions = 2; c.multLog = 5; });
+  const json = JSON.stringify(base, (k, v) => (v === -Infinity ? '-inf' : v));
+  const paths = []; (function walk(o, p) {
+    if (o && typeof o === 'object') for (const k of Object.keys(o)) { paths.push(p.concat(k)); walk(o[k], p.concat(k)); }
+  })(JSON.parse(json), []);
+  const BAD = [null, 'x', '-inf', -1, -5000, 0, 5000, 1e300, NaN, Infinity, -Infinity, true, false, [], {}, [null], [{}], { a: 1 }];
+  let seed = 12345; const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  ctx.__json = json;
+  const run = vm.runInContext(`(function (path, bad) {
+    const o = JSON.parse(__json, (k, v) => (v === '-inf' ? -Infinity : v));
+    let t = o; for (let i = 0; i < path.length - 1; i++) t = t[path[i]]; t[path[path.length - 1]] = bad;
+    let s;
+    try { s = Engine.migrate(o); } catch (e) { return e.message === 'Invalid save' ? 'rejected' : 'THROW ' + e.message; }
+    for (let i = 0; i < 50; i++) Engine.tick(s, 0.5);
+    Engine.deserialize(Engine.serialize(s));
+    const bad2 = [s.scoreLog, s.inf.ipLog, s.inf.gpLog, s.infinities].filter((x) => typeof x !== 'number' || Number.isNaN(x));
+    return bad2.length ? 'POISON ' + bad2.map(String).join(',') : 'ok';
+  })`, ctx);
+  const fails = []; let ok = 0, rejected = 0;
+  for (let n = 0; n < 300; n++) {
+    const p = paths[Math.floor(rnd() * paths.length)]; const bad = BAD[Math.floor(rnd() * BAD.length)];
+    const key = p.join('.') + '=' + (typeof bad === 'number' ? String(bad) : JSON.stringify(bad));
+    ctx.__run = run; ctx.__p = p; ctx.__bad = bad;
+    let r;
+    try { r = vm.runInContext('__run(__p, __bad)', ctx, { timeout: 1000 }); } catch (e) { r = /timed out/.test(e.message) ? 'HANG' : 'THROW ' + e.message; }
+    if (r === 'ok') ok++; else if (r === 'rejected') rejected++; else fails.push(key + ' -> ' + r);
+  }
+  assert.deepEqual(fails, [], fails.length + ' bad cases');
+  assert.ok(ok > 200, `ok ${ok}, rejected ${rejected}`);
+});

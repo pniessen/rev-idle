@@ -204,6 +204,10 @@
         rem = spend(rem, x);
         bought++;
       }
+      // Nothing affordable at this price (x0 passed but a non-numeric level
+      // budget, e.g. from a corrupt save, bought nothing): stop instead of
+      // spinning on an unchanged state.
+      if (bought === 0) break;
       c.level += bought;
       c.bought += bought;
       left -= bought;
