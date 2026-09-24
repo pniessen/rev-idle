@@ -437,6 +437,27 @@ test('autobuy: cheapest first until nothing affordable; toggles respected', () =
   const u = autoState('1;1'); u.scoreLog = 4; u.inf.auto.buy.on = false; E.autoStep(u, 0.1); assert.equal(u.circles[0].level, 5);
 });
 
+// One-level-at-a-time reference for autobuy (spec §6.1) and a comparison.
+const refAutoBuy = (s) => {
+  for (let k = 0; k < E.TUNE.autoBuyMaxPerStep; k++) {
+    let b = -1, bc = Infinity;
+    for (let i = 0; i < 10; i++) {
+      const c = s.circles[i];
+      if (!s.inf.auto.buy.circles[i] || !c.unlocked || c.level >= E.levelCap(c)) continue;
+      const x = E.costLog(s, i);
+      if (x <= s.scoreLog && x < bc) { bc = x; b = i; }
+    }
+    if (b < 0) break;
+    assert.equal(E.buy(s, b, 1), 1);
+  }
+};
+const sameAutoBuy = (a, r, what) => {
+  const lv = (x) => x.circles.map((c) => `${c.level}/${c.bought}/${c.unlocked ? 1 : 0}`).join(' ');
+  assert.equal(lv(a), lv(r), `${what}: levels differ`);
+  if (r.scoreLog === -Infinity) assert.equal(a.scoreLog, -Infinity, `${what}: score ${a.scoreLog} vs -Infinity`);
+  else assert.ok(Math.abs(a.scoreLog - r.scoreLog) <= 1e-9, `${what}: scoreLog ${a.scoreLog} vs ${r.scoreLog}`);
+};
+
 // Spec §6.1: autobuy must behave exactly like repeatedly buying one level of
 // the cheapest affordable enabled/unlocked/below-cap circle (ties -> lower
 // index), capped at autoBuyMaxPerStep LEVELS per call. The engine buys in
@@ -445,19 +466,6 @@ test('autobuy bulk-buy equals repeated cheapest-first single-level buys (randomi
   let seed = 12345;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const ri = (n) => Math.floor(rnd() * n);
-  const refBuy = (s) => {
-    for (let k = 0; k < E.TUNE.autoBuyMaxPerStep; k++) {
-      let b = -1, bc = Infinity;
-      for (let i = 0; i < 10; i++) {
-        const c = s.circles[i];
-        if (!s.inf.auto.buy.circles[i] || !c.unlocked || c.level >= E.levelCap(c)) continue;
-        const x = E.costLog(s, i);
-        if (x <= s.scoreLog && x < bc) { bc = x; b = i; }
-      }
-      if (b < 0) break;
-      assert.equal(E.buy(s, b, 1), 1);
-    }
-  };
   let capped = 0, bought = 0;
   for (let t = 0; t < 1500; t++) {
     const s = autoState('1;1');
@@ -474,17 +482,55 @@ test('autobuy bulk-buy equals repeated cheapest-first single-level buys (randomi
     }
     s.scoreLog = rnd() < 0.2 ? 50 + rnd() * 250 : rnd() * 60;
     const a = structuredClone(s), r = structuredClone(s);
-    E._autoBuyOnce(a);
-    refBuy(r);
-    const lv = (x) => x.circles.map((c) => `${c.level}/${c.bought}/${c.unlocked ? 1 : 0}`).join(' ');
-    assert.equal(lv(a), lv(r), `trial ${t}: levels differ`);
-    if (r.scoreLog === -Infinity) assert.equal(a.scoreLog, -Infinity, `trial ${t}`);
-    else assert.ok(Math.abs(a.scoreLog - r.scoreLog) <= 1e-9, `trial ${t}: scoreLog ${a.scoreLog} vs ${r.scoreLog}`);
+    const did = E._autoBuyOnce(a);
+    refAutoBuy(r);
+    sameAutoBuy(a, r, `trial ${t}`);
+    assert.equal(did, a.circles.some((c, i) => c.bought !== s.circles[i].bought), `trial ${t}: return value`);
     const n = r.circles.reduce((x, c, i) => x + c.bought - s.circles[i].bought, 0);
     bought += n; if (n === E.TUNE.autoBuyMaxPerStep) capped++;
   }
   assert.ok(capped > 20, `only ${capped} trials hit the 500-level cap`);
   assert.ok(bought > 10000, `only ${bought} levels bought overall`);
+});
+
+// Exact boundaries: the score equals one level's cost, or the exact sum of
+// the next k levels of one circle (crossing the 5th purchase, which unlocks
+// the next circle). Autobuy must buy all k levels, empty the score, record
+// the purchase and do the unlock. The E.buy reference agrees exactly for
+// k = 1; for k >= 2 its sequential logSubs land on the last level within
+// float rounding of its cost (inside logSub's 1e-12 dead zone), so it may
+// stop one level short — allowed only in exactly that situation.
+test('autobuy exact-boundary scores: buys everything, empties score, unlocks', () => {
+  let cases = 0, refShort = 0;
+  for (const i of [0, 1, 3]) {
+    for (const bought0 of [0, 2, 3, 4, 5, 7]) {
+      for (const k of [1, 2, 3, 4, 6]) {
+        const s = autoState('1;1');
+        for (let j = 0; j <= i; j++) { s.circles[j].unlocked = true; s.circles[j].level = 7; s.circles[j].bought = 7; }
+        s.circles[i].bought = bought0;
+        // only circle i enabled (unlocking i+1 does not depend on its toggle),
+        // so the purchase order is just circle i's levels
+        for (let j = 0; j < 10; j++) s.inf.auto.buy.circles[j] = j === i;
+        let sum = -Infinity;
+        for (let q = 0; q < k; q++) sum = E.logAdd(sum, E.costLog(s, i) + q * Math.log10(E.CIRCLES[i].costMult));
+        s.scoreLog = sum;
+        const a = structuredClone(s), r = structuredClone(s);
+        const what = `circle ${i} bought ${bought0} k ${k}`;
+        assert.equal(E._autoBuyOnce(a), true, `${what}: return value`);
+        assert.equal(a.circles[i].level, 7 + k, `${what}: level`);
+        assert.equal(a.circles[i].bought, bought0 + k, `${what}: bought`);
+        assert.equal(a.circles[i + 1].unlocked, bought0 + k >= 5, `${what}: next circle unlock`);
+        assert.equal(a.scoreLog, -Infinity, `${what}: score emptied`);
+        refAutoBuy(r);
+        if (k === 1 || r.circles[i].level === a.circles[i].level) { sameAutoBuy(a, r, what); cases++; continue; }
+        assert.equal(r.circles[i].level, 7 + k - 1, `${what}: reference short by more than one level`);
+        assert.ok(Math.abs(r.scoreLog - E.costLog(r, i)) <= 1e-9, `${what}: reference stopped outside the dead zone`);
+        cases++; refShort++;
+      }
+    }
+  }
+  assert.equal(cases, 90);
+  assert.ok(refShort < 90, 'reference agreed at least sometimes');
 });
 
 test('auto-ascend', () => {

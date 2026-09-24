@@ -1657,6 +1657,18 @@ if (typeof module !== 'undefined' && module.exports) {
     return len;
   }
 
+  // logSub's dead zone: a score within 1e-12 (log10) of a cost counts as
+  // exactly that cost, and paying it leaves nothing. In linear terms that is
+  // a relative band of 1 - 10^-1e-12 (~2.3e-12). Near-ties inside the band
+  // are resolved the same way here whatever the float rounding: affordable,
+  // and the score is emptied.
+  const DEAD = 1 - 10 ** -1e-12;
+  const DEAD_HI = 1 + DEAD;
+  function spend(rem, x) {
+    const after = rem - x;
+    return after <= rem * DEAD ? 0 : after;
+  }
+
   // Inserts circle i into ord[0..len) kept sorted by (cost, index).
   function insertOrd(ord, len, cost, i) {
     const ci = cost[i];
@@ -1669,8 +1681,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // Spec §6.1: repeatedly buy ONE level of the cheapest affordable enabled,
   // unlocked, below-cap circle (ties -> lower index), at most
   // TUNE.autoBuyMaxPerStep levels per call. The result is identical to that
-  // one-level-at-a-time loop (pinned by a randomized test against
-  // E.buy(s, i, 1)); it is just cheaper:
+  // one-level-at-a-time loop up to logSub's 1e-12 dead zone: a score within
+  // it of the next cost always buys and empties here (see DEAD), where
+  // E.buy's rounding may stop one level short (pinned by randomized and
+  // exact-boundary tests against E.buy(s, i, 1)). It is just cheaper:
   // - Which level is next depends only on costs, never on the score, so a
   //   run of levels of the same circle is capped where another circle's next
   //   level becomes the cheapest (cost < theirs, or <= when they have a
@@ -1712,7 +1726,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const cm = len > 1 ? cost[ord[1]] : Infinity;
       const strict = len > 1 && ord[1] < best;
       const x0 = 10 ** (bc - base); // level L's cost relative to the score
-      if (!(x0 <= rem)) break;
+      if (!(x0 <= rem * DEAD_HI)) break;
       const c = s.circles[best];
       const P = pre[best], r = step[best], L = c.level;
       let q = Math.min(E.levelCap(c) - L, left);
@@ -1730,7 +1744,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       let bought = 0;
       if (q === 1) {
-        rem -= x0;
+        rem = spend(rem, x0);
         bought = 1;
       } else if (q >= 4) {
         const bulk = Math.min(q, maxAffordable(bc, r, den[best], base + Math.log10(rem))) - 2;
@@ -1741,16 +1755,13 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       while (bought < q) {
         const x = 10 ** (P + (L + bought) * r - base);
-        if (!(x <= rem)) break;
-        rem -= x;
+        if (!(x <= rem * DEAD_HI)) break;
+        rem = spend(rem, x);
         bought++;
       }
       c.level += bought;
       c.bought += bought;
       left -= bought;
-      // Re-anchor once the score has dropped a lot, so rem keeps full
-      // relative precision (subtracting from a tiny rem loses digits).
-      if (rem < 1e-3) { base = rem > 0 ? base + Math.log10(rem) : -Infinity; rem = 1; if (base === -Infinity) break; }
       did = true;
       cost[best] = c.level < E.levelCap(c) ? P + c.level * r : Infinity;
       // Drop best from the front, then re-insert it at its new cost.
@@ -1762,6 +1773,15 @@ if (typeof module !== 'undefined' && module.exports) {
         next.level = 0;
         refreshBuyCost(s, cache, best + 1);
         if (cost[best + 1] !== Infinity) len = insertOrd(ord, len, cost, best + 1);
+      }
+      // Re-anchor once the score has dropped a lot, so rem keeps full
+      // relative precision (subtracting from a tiny rem loses digits). Done
+      // after the bookkeeping above so an exactly emptied score (rem = 0)
+      // still records the purchase and any unlock; then nothing is left.
+      if (rem < 1e-3) {
+        if (!(rem > 0)) { base = -Infinity; break; }
+        base += Math.log10(rem);
+        rem = 1;
       }
     }
     if (did) s.scoreLog = rem > 0 && base !== -Infinity ? base + Math.log10(rem) : -Infinity;
