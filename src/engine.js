@@ -243,6 +243,10 @@ const Engine = (() => {
   }
 
   function tick(s, dt) {
+    // m is taken before the clock advances: like every other rate in this
+    // explicit-Euler step, time-dependent mods (IC7's prodLog penalty and
+    // its completion reward) use the start-of-step t. The difference in
+    // prodLog is 2·log10(t/(t-dt)): under 0.03 once t >= 60 s with dt <= 2.
     const m = mods(s);
     s.inf.t += dt;
     s.inf.tRun += dt;

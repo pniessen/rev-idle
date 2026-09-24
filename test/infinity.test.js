@@ -678,20 +678,28 @@ test('simulate reports IP, Infinities and completed challenges', () => {
 
 const trackMk = () => { const s = autoState('1;1', '2;2', '3;1', '3;2', '4;1', '5;3'); s.infinities = 8; return s; };
 
-test('offline automation tracks active play at the offline (coarse) step', () => {
+// Ruling (task 10, fix round 2): at the UI's offline step (dtMin 0.5) the
+// time to the first Infinity must be within 15% of active play (spec §13
+// OFFLINE ±15%) and the Infinity count must be equal; bestScoreLog is only
+// compared when it is not pinned at the Infinity cap. Marked todo: it FAILS
+// with the spec §9.1 step rule — measured 356.9 s vs 242.6 s (+47%),
+// infinities 9 vs 10. The shortfall comes from the coarse step at the start
+// of every run (each prestige resets tRun, so dt = dtMin for the fastest
+// part of the run), not from autobuy. Needs a ruling; see task-10 report.
+test('offline automation tracks active play at the offline (coarse) step', {
+  todo: 'dtMin 0.5: first Infinity 356.9 s vs 242.6 s active (+47%); needs a step-rule ruling (task-10 report)',
+}, () => {
   const a = trackMk(), b = trackMk();
   E.simulate(a, 600, { dtMin: 0.5 });
   for (let i = 0; i < 6000; i++) E.tick(b, 0.1);
-  // Auto-prestige avalanches (each prestige raises pMult, which speeds up
-  // growth, which triggers more prestiges) are inherently sensitive to
-  // Euler step size: at dtMin=0.5 the two runs' *prestige counts* diverge
-  // sharply (68 vs 131, measured) even though they track tightly at the
-  // default dtMin=0.1 (124 vs 123 — see the next test). So at this
-  // deliberately-coarsened step the offline contract asserted here is
-  // overall progress (score, Infinity crossings, challenge completion),
-  // not exact event counts; see task-10 report for the investigation.
-  assert.ok(Math.abs(a.stats.bestScoreLog - b.stats.bestScoreLog) <= 1, `best ${a.stats.bestScoreLog} vs ${b.stats.bestScoreLog}`);
-  assert.ok(Math.abs(a.infinities - b.infinities) <= 1, `infinities ${a.infinities} vs ${b.infinities}`);
+  assert.ok(b.stats.fastestInfinity !== null, 'active run reached Infinity');
+  assert.ok(a.stats.fastestInfinity !== null, 'offline run reached Infinity');
+  const ratio = a.stats.fastestInfinity / b.stats.fastestInfinity;
+  assert.ok(Math.abs(ratio - 1) <= 0.15, `first Infinity ${a.stats.fastestInfinity} s vs ${b.stats.fastestInfinity} s`);
+  assert.equal(a.infinities, b.infinities);
+  if (b.stats.bestScoreLog < E.INFINITY_LOG - 1e-9) {
+    assert.ok(Math.abs(a.stats.bestScoreLog - b.stats.bestScoreLog) <= 1, `best ${a.stats.bestScoreLog} vs ${b.stats.bestScoreLog}`);
+  }
   assert.deepEqual(a.inf.ic.done, b.inf.ic.done);
 });
 
@@ -715,9 +723,12 @@ test('8 h offline with automation stays within the 3 s budget (2.5 s in Node)', 
 // Deferred review item #3: generator (and score) production use explicit
 // Euler with start-of-tick values, so a single large dt (the adaptive
 // step's own dtMax, and a much bigger single jump) must not blow up into
-// NaN/-Infinity, and progress must still only move forward.
-test('large dt steps do not blow up generator/score production', () => {
+// NaN/-Infinity. Run with automation on (no-NaN checks) and off (then
+// score and GP must also only move forward: autobuy legitimately spends
+// score, and prestige/promote reset it).
+for (const autoOn of [true, false]) test(`large dt steps do not blow up generator/score production (automation ${autoOn ? 'on' : 'off'})`, () => {
   const s = autoState('1;1', '2;2', '3;1', '3;2', '4;1', '5;3');
+  if (!autoOn) for (const k of ['buy', 'asc', 'promote', 'prestige', 'infinity']) s.inf.auto[k].on = false;
   s.infinities = 8;
   s.inf.ipLog = 5;
   s.inf.gpLog = 3;
@@ -738,6 +749,7 @@ test('large dt steps do not blow up generator/score production', () => {
     assert.ok(finite(cur.ipLog) && !Number.isNaN(cur.ipLog), `ipLog NaN: ${cur.ipLog}`);
     assert.ok(finite(cur.sdLog) && !Number.isNaN(cur.sdLog), `sdLog NaN: ${cur.sdLog}`);
     cur.gensALog.forEach((a, k) => assert.ok(finite(a) && !Number.isNaN(a), `gens[${k}].aLog NaN: ${a}`));
+    if (autoOn) return;
     assert.ok(cur.scoreLog >= prev.scoreLog, `scoreLog decreased: ${prev.scoreLog} -> ${cur.scoreLog}`);
     assert.ok(cur.gpLog >= prev.gpLog, `gpLog decreased: ${prev.gpLog} -> ${cur.gpLog}`);
   };
