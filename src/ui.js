@@ -259,6 +259,29 @@
     showModal(panel);
   }
 
+  // D15: shown once, the first time inf.ipLog crosses the Infinity cap.
+  function showFinaleModal() {
+    modalOpen = 'finale';
+    var s = state.stats;
+    var panel = el('div', { class: 'modal-panel' }, [
+      el('h2', { class: 'modal-title' }, ['Eternity — coming soon']),
+      el('div', { class: 'kv-list' }, [
+        statLine('Play time', fmtTime(s.playTime)),
+        statLine('Infinities', fmtInf(state.infinities)),
+        statLine('Fastest Infinity', s.fastestInfinity === null ? '—' : fmtTime(s.fastestInfinity)),
+      ]),
+      el('button', {
+        class: 'btn primary full-width',
+        onclick: function () {
+          state.inf.finaleSeen = true;
+          save();
+          hideModal();
+        },
+      }, ['Close']),
+    ]);
+    showModal(panel);
+  }
+
   function statLine(label, value) {
     return el('div', { class: 'stat-line' }, [
       el('span', { class: 'label' }, [label]),
@@ -304,6 +327,11 @@
     }
     if (state.inf.gpLog > 0) {
       frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'gpChip', tabindex: '0' }, ['GP ×' + fmt(Engine.gpMultLog(state))]));
+    }
+    if (state.inf.ic.active) {
+      frag.appendChild(el('span', {
+        class: 'chip', style: 'color:var(--warn);border-color:var(--warn)', 'data-tip': 'icChip', tabindex: '0',
+      }, ['IC ' + state.inf.ic.active]));
     }
     if (state.infinities > 0) {
       frag.appendChild(el('span', { class: 'chip grey' }, ['\u221E ' + state.infinities]));
@@ -531,13 +559,29 @@
       'Reset your circles for a permanent multiplier and exponent boost based on your score.',
     ]));
 
-    if (Engine.canInfinity(state)) {
+    if (state.inf.broken && Engine.canInfinity(state)) {
       wrap.appendChild(el('button', {
         id: 'prestige-infinity-btn',
         class: 'btn primary full-width',
         'data-tip': 'goInfinite',
         onclick: doGoInfinite,
-      }, ['Go Infinite']));
+      }, ['Go Infinite (+' + fmt(Engine.ipGainLog(state)) + ' IP)']));
+    }
+
+    if (state.inf.ic.active) {
+      wrap.appendChild(el('div', { id: 'ic-banner', class: 'help' }, [icBannerText()]));
+    }
+
+    if (state.inf.broken) {
+      wrap.appendChild(el('div', { id: 'ip-bar-row', tabindex: '0', 'data-tip': 'ipBar' }, [
+        el('div', { class: 'stat-line' }, [
+          el('span', { class: 'label' }, ['IP bonus']),
+          el('span', { id: 'ip-bar-label' }, [ipBarText()]),
+        ]),
+        el('div', { class: 'progress-bar' }, [
+          el('div', { class: 'progress-fill', id: 'ip-bar-fill', style: 'width:' + (ipBarProgress() * 100) + '%' }),
+        ]),
+      ]));
     }
 
     var reqLog = Math.max(Engine.TUNE.prestigeMinLog, state.prestigeReqLog);
@@ -575,14 +619,56 @@
     return '\u00D7' + fmt(Math.log10(g.pMult)) + '  ^' + g.pExp.toFixed(3);
   }
 
+  // Break Infinity IP bar (spec \u00A78, \u00A710.3): progress from the last \u00D710
+  // threshold to the next one, once scoreLog has passed the first threshold.
+  function ipBarText() {
+    var T = Engine.TUNE;
+    var k = Engine.breakBonusLog(state);
+    var threshold = T.breakStartLog + T.breakStepLog * (k + 1);
+    return 'IP \u00D710^' + k + ' \u00B7 next \u00D710 at e' + threshold.toLocaleString('en-US');
+  }
+  function ipBarProgress() {
+    var T = Engine.TUNE;
+    if (state.scoreLog < T.breakStartLog) return 0;
+    var mod = (state.scoreLog - T.breakStartLog) % T.breakStepLog;
+    return Math.max(0, Math.min(1, mod / T.breakStepLog));
+  }
+  function icBannerText() {
+    var c = Engine.CHALLENGES[state.inf.ic.active - 1];
+    if (!c) return '';
+    return 'IC' + c.n + ' ' + c.name + ' \u2014 reach ' + fmt(Engine.INFINITY_LOG);
+  }
+
   function updatePrestigeTab(root) {
     var pending = root.querySelector('#prestige-pending span:last-child');
     if (pending) pending.textContent = pendingPrestigeText();
     var btn = root.querySelector('#prestige-btn');
     if (btn) btn.disabled = !Engine.canPrestige(state);
+
     var infinityBtn = root.querySelector('#prestige-infinity-btn');
-    if (Engine.canInfinity(state) && !infinityBtn) {
-      markDirty(); // re-render to insert the Go Infinite button
+    var wantInfinityBtn = state.inf.broken && Engine.canInfinity(state);
+    if (wantInfinityBtn !== !!infinityBtn) {
+      markDirty(); // insert/remove the Go Infinite button
+    } else if (infinityBtn) {
+      infinityBtn.textContent = 'Go Infinite (+' + fmt(Engine.ipGainLog(state)) + ' IP)';
+    }
+
+    var banner = root.querySelector('#ic-banner');
+    var wantBanner = !!state.inf.ic.active;
+    if (wantBanner !== !!banner) {
+      markDirty();
+    } else if (banner) {
+      banner.textContent = icBannerText();
+    }
+
+    var ipBarRow = root.querySelector('#ip-bar-row');
+    if (state.inf.broken !== !!ipBarRow) {
+      markDirty();
+    } else if (ipBarRow) {
+      var label = ipBarRow.querySelector('#ip-bar-label');
+      if (label) label.textContent = ipBarText();
+      var fill = ipBarRow.querySelector('#ip-bar-fill');
+      if (fill) fill.style.width = (ipBarProgress() * 100) + '%';
     }
   }
 
@@ -651,6 +737,26 @@
 
   // ---------- stats tab ----------
 
+  function renderInfHistoryRows() {
+    var hist = state.stats.lastInfinities;
+    if (!hist.length) return [el('p', { class: 'help' }, ['No Infinities yet.'])];
+    return hist.slice().reverse().map(function (rec) {
+      return statLine(fmtTime(rec.t), '+' + fmt(rec.ipGainLog) + ' IP');
+    });
+  }
+
+  function renderIcStatsRows() {
+    var rows = Engine.CHALLENGES.map(function (c) {
+      var best = state.inf.ic.best[c.n - 1];
+      return statLine('IC' + c.n + ' ' + c.name, best === null ? '—' : fmtTime(best));
+    });
+    if (Engine.icDoneCount(state) === 9) {
+      var sum = state.inf.ic.best.reduce(function (a, b) { return a + b; }, 0);
+      rows.push(statLine('ΣIC', fmtTime(sum)));
+    }
+    return rows;
+  }
+
   function renderStatsTab(root) {
     var wrap = el('div', { class: 'tab-body-inner' });
     wrap.appendChild(el('h2', { class: 'section-title' }, ['Stats']));
@@ -660,9 +766,18 @@
       statLine('Best score', fmt(state.stats.bestScoreLog)),
       statLine('Prestiges', String(state.stats.prestiges)),
       statLine('Promotions', String(state.stats.promotions)),
-      statLine('Infinities', String(state.infinities)),
+      statLine('Infinities', fmtInf(state.infinities)),
+      statLine('Total IP', fmt(state.stats.totalIpLog)),
+      statLine('Fastest Infinity', state.stats.fastestInfinity === null ? '—' : fmtTime(state.stats.fastestInfinity)),
     ]);
     wrap.appendChild(list);
+
+    wrap.appendChild(el('h2', { class: 'section-title' }, ['Last Infinities']));
+    wrap.appendChild(el('div', { id: 'inf-history', class: 'kv-list' }, renderInfHistoryRows()));
+
+    wrap.appendChild(el('h2', { class: 'section-title' }, ['Infinity Challenges']));
+    wrap.appendChild(el('div', { id: 'ic-stats-list', class: 'kv-list' }, renderIcStatsRows()));
+
     root.innerHTML = '';
     root.appendChild(wrap);
   }
@@ -677,11 +792,23 @@
       fmt(state.stats.bestScoreLog),
       String(state.stats.prestiges),
       String(state.stats.promotions),
-      String(state.infinities),
+      fmtInf(state.infinities),
+      fmt(state.stats.totalIpLog),
+      state.stats.fastestInfinity === null ? '—' : fmtTime(state.stats.fastestInfinity),
     ];
     for (var i = 0; i < rows.length; i++) {
       var span = rows[i].querySelector('span:last-child');
       if (span) span.textContent = values[i];
+    }
+    var histWrap = root.querySelector('#inf-history');
+    if (histWrap) {
+      histWrap.innerHTML = '';
+      renderInfHistoryRows().forEach(function (r) { histWrap.appendChild(r); });
+    }
+    var icWrap = root.querySelector('#ic-stats-list');
+    if (icWrap) {
+      icWrap.innerHTML = '';
+      renderIcStatsRows().forEach(function (r) { icWrap.appendChild(r); });
     }
   }
 
@@ -690,6 +817,21 @@
   function renderSettingsTab(root) {
     var wrap = el('div', { class: 'tab-body-inner' });
     wrap.appendChild(el('h2', { class: 'section-title' }, ['Settings']));
+
+    wrap.appendChild(el('div', { class: 'row' }, [
+      el('button', {
+        id: 'confirm-inf-toggle',
+        class: 'btn toggle',
+        'aria-pressed': String(state.inf.auto.confirmInfinity),
+        'data-tip': 'confirmInfinity',
+        tabindex: '0',
+        onclick: function () {
+          state.inf.auto.confirmInfinity = !state.inf.auto.confirmInfinity;
+          save();
+          markDirty();
+        },
+      }, ['Confirm each Infinity: ' + (state.inf.auto.confirmInfinity ? 'On' : 'Off')]),
+    ]));
 
     wrap.appendChild(el('h2', { class: 'section-title' }, ['Export']));
     var exportArea = el('textarea', { class: 'save-area', readonly: 'true' });
@@ -751,6 +893,14 @@
     root.appendChild(wrap);
   }
 
+  function updateSettingsTab(root) {
+    var btn = root.querySelector('#confirm-inf-toggle');
+    if (btn) {
+      btn.setAttribute('aria-pressed', String(state.inf.auto.confirmInfinity));
+      btn.textContent = 'Confirm each Infinity: ' + (state.inf.auto.confirmInfinity ? 'On' : 'Off');
+    }
+  }
+
   // ---------- tab dispatch ----------
 
   var TAB_RENDER = {
@@ -768,7 +918,7 @@
     promote: updatePromoteTab,
     infinity: function (root) { if (window.InfinityUI) window.InfinityUI.update(root, state, kit); },
     stats: updateStatsTab,
-    settings: function () {},
+    settings: updateSettingsTab,
   };
 
   function renderActiveTabBody() {
@@ -859,6 +1009,22 @@
       }
     }
     lastKnownInfinities = state.infinities;
+  }
+
+  function updateIcCanvasBanner() {
+    if (!els.icBanner) return;
+    var n = state.inf.ic.active;
+    if (!n) { els.icBanner.style.display = 'none'; return; }
+    var c = Engine.CHALLENGES[n - 1];
+    els.icBanner.textContent = 'IC' + n + ' ' + (c ? c.name : '');
+    els.icBanner.style.display = '';
+  }
+
+  function checkFinale() {
+    if (modalOpen) return;
+    if (state.inf.ipLog >= Engine.INFINITY_LOG && !state.inf.finaleSeen) {
+      showFinaleModal();
+    }
   }
 
   // ---------- catch-up (offline / hidden-tab, non-blocking) ----------
@@ -1024,6 +1190,8 @@
     }
     checkInfinity();
     checkInfinityToast();
+    checkFinale();
+    updateIcCanvasBanner();
     if (Help) {
       Help.onTick(state);
       Help.refresh();
@@ -1064,6 +1232,10 @@
     }, ['?']);
     els.multbar.appendChild(els.multbarChips);
     els.multbar.appendChild(els.helpBtn);
+
+    els.icBanner = el('div', { id: 'ic-canvas-banner', 'aria-hidden': 'true' });
+    els.icBanner.style.display = 'none';
+    if (els.stage) els.stage.appendChild(els.icBanner);
 
     els.scorebox = document.getElementById('scorebox');
     els.infinityBtn = el('button', {

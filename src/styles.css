@@ -682,3 +682,139 @@ textarea.save-area {
   font-variant-numeric: tabular-nums;
   font-size: 12px;
 }
+
+/* ---------- ∞ tab: Auto ---------- */
+
+.inf-auto { display: flex; flex-direction: column; gap: 10px; }
+
+.auto-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn.toggle[aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.auto-dot-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.auto-dot {
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.auto-dot.active {
+  background: currentColor;
+  box-shadow: 0 0 8px 1px currentColor;
+}
+
+.auto-order-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.order-chip {
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
+.auto-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.auto-field-label { color: var(--muted); min-width: 0; }
+
+.auto-input {
+  width: 100px;
+  min-width: 0;
+  flex-shrink: 0;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+/* ---------- ∞ tab: ICs ---------- */
+
+.inf-ics { display: flex; flex-direction: column; }
+
+.ic-break-card { border-color: var(--warn); }
+
+.ic-card.owned { border-color: var(--accent); }
+
+.ic-card.buyable {
+  border-color: var(--warn);
+  box-shadow: 0 0 12px 2px var(--warn);
+}
+
+.ic-card .card-title { margin-bottom: 8px; }
+.ic-card .iu-effect { margin-top: 4px; }
+.ic-card .stat-line { margin-top: 6px; }
+.ic-card button { margin-top: 10px; }
+
+/* ---------- ∞ tab: Stars ---------- */
+
+.inf-stars { display: flex; flex-direction: column; gap: 10px; }
+
+.star-buy-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+.star-buy-label {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sd-row .card-title { margin-bottom: 4px; }
+.sd-row button { margin-top: 8px; }
+
+/* ---------- canvas IC overlay ---------- */
+
+#ic-canvas-banner {
+  position: absolute;
+  top: 8px;
+  left: 16px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(7, 6, 13, 0.6);
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 3;
+}

@@ -383,12 +383,439 @@
     if (rows.length !== visibleGenCount(state)) kit.markDirty();
   }
 
-  // ---------- Auto / ICs / Stars (placeholders until Task 12) ----------
+  // ---------- shared small helpers (Auto / ICs / Stars) ----------
 
-  function renderComingSoon(kit) {
-    return kit.el('div', { class: 'inf-coming-soon' }, [
-      kit.el('p', { class: 'help' }, ['Coming in Task 12']),
+  // m:ss for challenge best times; null (never completed) -> em dash.
+  function fmtMMSS(sec) {
+    if (sec === null || sec === undefined) return '—';
+    var s = Math.round(sec);
+    var m = Math.floor(s / 60);
+    var r = s % 60;
+    return m + ':' + (r < 10 ? '0' : '') + r;
+  }
+
+  // ---------- Auto ----------
+
+  var PROMO_NAMES = ['Mult Gain', 'Lap Speed', 'Ascension Power', 'Promotion Power'];
+
+  function buildMasterToggle(kit, tipKey, getOn, setOn) {
+    var btn = kit.el('button', {
+      class: 'btn toggle auto-master',
+      'aria-pressed': String(getOn()),
+      tabindex: '0',
+      'data-tip': tipKey,
+    }, [getOn() ? 'On' : 'Off']);
+    btn.addEventListener('click', function () {
+      setOn(!getOn());
+      btn.setAttribute('aria-pressed', String(getOn()));
+      btn.textContent = getOn() ? 'On' : 'Off';
+      kit.save();
+    });
+    return btn;
+  }
+
+  function buildColorGrid(kit, circlesArr, onToggle) {
+    var grid = kit.el('div', { class: 'auto-dot-grid' });
+    for (var i = 0; i < 10; i++) {
+      (function (i) {
+        var color = Engine.CIRCLES[i].color;
+        var dot = kit.el('button', {
+          class: 'auto-dot' + (circlesArr[i] ? ' active' : ''),
+          style: 'border-color:' + color + ';color:' + color,
+          'aria-pressed': String(!!circlesArr[i]),
+          'aria-label': Engine.CIRCLES[i].name,
+          tabindex: '0',
+        });
+        dot.addEventListener('click', function () {
+          circlesArr[i] = !circlesArr[i];
+          dot.classList.toggle('active', circlesArr[i]);
+          dot.setAttribute('aria-pressed', String(circlesArr[i]));
+          onToggle();
+        });
+        grid.appendChild(dot);
+      })(i);
+    }
+    return grid;
+  }
+
+  // A single committed-on-change numeric/text field. `stored` starts as the
+  // engine value; format() renders it as input text, parse() turns raw text
+  // back into a candidate value (or null if unparseable). An invalid commit
+  // (parse failure, or below `min`) reverts the input and toasts, per the
+  // brief's "Inputs commit on change ... invalid reverts + toast" rule.
+  function buildNumberField(kit, label, extraAttrs, initialStored, format, parse, min, apply) {
+    var wrap = kit.el('div', { class: 'auto-field' });
+    wrap.appendChild(kit.el('label', { class: 'auto-field-label' }, [label]));
+    var stored = initialStored;
+    var attrs = Object.assign({ type: 'text', class: 'auto-input', value: format(stored) }, extraAttrs || {});
+    var input = kit.el('input', attrs);
+    input.addEventListener('change', function () {
+      var parsed = parse(input.value);
+      if (parsed === null || parsed === undefined || isNaN(parsed) || !isFinite(parsed)
+        || (min !== undefined && parsed < min)) {
+        input.value = format(stored);
+        kit.toast('Invalid value');
+        return;
+      }
+      stored = parsed;
+      input.value = format(stored);
+      apply(parsed);
+      kit.save();
+    });
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  function plainFormat(v) { return String(v); }
+  function plainParse(raw) {
+    var n = parseFloat(raw);
+    return isNaN(n) ? null : n;
+  }
+  // Auto-Infinity's min-IP field: accepts "1e20" or "100000", stored as log10.
+  function formatMinIp(log) {
+    if (!isFinite(log)) return '0';
+    if (log === 0) return '1';
+    return '1e' + (Number.isInteger(log) ? log : log.toFixed(2));
+  }
+  function parseMinIp(raw) {
+    var v = Number(String(raw).trim());
+    if (!isFinite(v) || v <= 0) return null;
+    return Math.log10(v);
+  }
+
+  function buildAutoBuyCard(kit, state) {
+    var auto = state.inf.auto.buy;
+    var card = kit.el('div', { class: 'card auto-card', 'data-auto': 'buy' });
+    var head = kit.el('div', { class: 'row auto-card-head' }, [kit.el('div', { class: 'card-title' }, ['Autobuy'])]);
+    head.appendChild(buildMasterToggle(kit, 'autoBuy', function () { return auto.on; }, function (v) { auto.on = v; }));
+    card.appendChild(head);
+    card.appendChild(buildColorGrid(kit, auto.circles, function () { kit.save(); }));
+    return card;
+  }
+
+  function buildAutoAscCard(kit, state) {
+    var auto = state.inf.auto.asc;
+    var card = kit.el('div', { class: 'card auto-card', 'data-auto': 'asc' });
+    var head = kit.el('div', { class: 'row auto-card-head' }, [kit.el('div', { class: 'card-title' }, ['Auto-Ascend'])]);
+    head.appendChild(buildMasterToggle(kit, 'autoAsc', function () { return auto.on; }, function (v) { auto.on = v; }));
+    card.appendChild(head);
+    card.appendChild(buildColorGrid(kit, auto.circles, function () { kit.save(); }));
+    return card;
+  }
+
+  function buildAutoPromoteCard(kit, state) {
+    var auto = state.inf.auto.promote;
+    var card = kit.el('div', { class: 'card auto-card', 'data-auto': 'promote' });
+    var head = kit.el('div', { class: 'row auto-card-head' }, [kit.el('div', { class: 'card-title' }, ['Auto-Promote'])]);
+    head.appendChild(buildMasterToggle(kit, 'autoPromote', function () { return auto.on; }, function (v) { auto.on = v; }));
+    card.appendChild(head);
+
+    var orderRow = kit.el('div', { class: 'auto-order-row' });
+    function renderOrderChips() {
+      orderRow.innerHTML = '';
+      auto.order.forEach(function (k, idx) {
+        var chip = kit.el('button', { class: 'btn order-chip' }, [PROMO_NAMES[k]]);
+        chip.addEventListener('click', function () {
+          var prevIdx = (idx - 1 + auto.order.length) % auto.order.length;
+          var tmp = auto.order[idx];
+          auto.order[idx] = auto.order[prevIdx];
+          auto.order[prevIdx] = tmp;
+          renderOrderChips();
+          kit.save();
+        });
+        orderRow.appendChild(chip);
+      });
+    }
+    renderOrderChips();
+    card.appendChild(orderRow);
+
+    card.appendChild(buildNumberField(kit, '×', {}, auto.xFactor, plainFormat, plainParse, 1.1, function (v) { auto.xFactor = v; }));
+    card.appendChild(buildNumberField(kit, 'Min time (s)', {}, auto.minTime, plainFormat, plainParse, 0, function (v) { auto.minTime = v; }));
+    return card;
+  }
+
+  function buildAutoPrestigeCard(kit, state) {
+    var auto = state.inf.auto.prestige;
+    var card = kit.el('div', { class: 'card auto-card', 'data-auto': 'prestige' });
+    var head = kit.el('div', { class: 'row auto-card-head' }, [kit.el('div', { class: 'card-title' }, ['Auto-Prestige'])]);
+    head.appendChild(buildMasterToggle(kit, 'autoPrestige', function () { return auto.on; }, function (v) { auto.on = v; }));
+    card.appendChild(head);
+    card.appendChild(buildNumberField(kit, 'multX', {}, auto.multX, plainFormat, plainParse, 1, function (v) { auto.multX = v; }));
+    card.appendChild(buildNumberField(kit, 'expGain', {}, auto.expGain, plainFormat, plainParse, 0, function (v) { auto.expGain = v; }));
+    card.appendChild(buildNumberField(kit, 'Min time (s)', {}, auto.minTime, plainFormat, plainParse, 0, function (v) { auto.minTime = v; }));
+    return card;
+  }
+
+  function buildAutoInfinityCard(kit, state) {
+    var auto = state.inf.auto.infinity;
+    var card = kit.el('div', { class: 'card auto-card', 'data-auto': 'infinity' });
+    var head = kit.el('div', { class: 'row auto-card-head' }, [kit.el('div', { class: 'card-title' }, ['Auto-Infinity'])]);
+    head.appendChild(buildMasterToggle(kit, 'autoInfinity', function () { return auto.on; }, function (v) { auto.on = v; }));
+    card.appendChild(head);
+    card.appendChild(buildNumberField(kit, 'Min IP', {}, auto.minIpLog, formatMinIp, parseMinIp, undefined, function (v) { auto.minIpLog = v; }));
+    card.appendChild(buildNumberField(kit, 'Min time (s)', {}, auto.minTime, plainFormat, plainParse, 0, function (v) { auto.minTime = v; }));
+    return card;
+  }
+
+  function buildStallField(kit, state) {
+    var auto = state.inf.auto;
+    var card = kit.el('div', { class: 'card auto-card', 'data-auto': 'shared' }, [
+      kit.el('div', { class: 'card-title' }, ['Shared']),
     ]);
+    card.appendChild(buildNumberField(kit, 'Stall seconds', { 'data-tip': 'stallSec', tabindex: '0' }, auto.stallSec, plainFormat, plainParse, 0, function (v) { auto.stallSec = v; }));
+    return card;
+  }
+
+  function renderAuto(kit, state) {
+    var wrap = kit.el('div', { class: 'inf-auto' });
+    var u = Engine.autoUnlocked(state);
+    if (u.buy) wrap.appendChild(buildAutoBuyCard(kit, state));
+    if (u.asc) wrap.appendChild(buildAutoAscCard(kit, state));
+    if (u.promote) wrap.appendChild(buildAutoPromoteCard(kit, state));
+    if (u.prestige) wrap.appendChild(buildAutoPrestigeCard(kit, state));
+    if (u.infinity) wrap.appendChild(buildAutoInfinityCard(kit, state));
+    wrap.appendChild(buildStallField(kit, state));
+    return wrap;
+  }
+
+  function autoUnlockedKey(state) {
+    var u = Engine.autoUnlocked(state);
+    return ['buy', 'asc', 'promote', 'prestige', 'infinity'].filter(function (k) { return u[k]; }).join(',');
+  }
+
+  // Auto's cards have no live-computed numbers besides the inputs the player
+  // owns, so the only thing that can go stale under it without a rebuild is
+  // which cards are unlocked (buying an upgrade elsewhere while this sub-tab
+  // is open) — everything else is driven by direct DOM mutation in the click
+  // handlers above.
+  function updateAuto(root, kit, state) {
+    var cards = root.querySelectorAll('[data-auto]');
+    var present = Array.prototype.map.call(cards, function (c) { return c.getAttribute('data-auto'); })
+      .filter(function (k) { return k !== 'shared'; }).join(',');
+    if (present !== autoUnlockedKey(state)) kit.markDirty();
+  }
+
+  // ---------- ICs ----------
+
+  // The status label: active beats done (a challenge stays "done" once it's
+  // ever completed) beats available beats locked.
+  function icCardLabel(state, n) {
+    if (state.inf.ic.active === n) return 'active';
+    if (state.inf.ic.done[n - 1]) return 'done';
+    if (Engine.canStartChallenge(state, n)) return 'available';
+    return 'locked';
+  }
+  // Engine.canStartChallenge doesn't exclude an already-done challenge (it
+  // only needs no challenge active and the previous one done), so a done
+  // card can still be replayed for a better best time — this is tracked
+  // separately from the label so "Done ✓" and a Start button can coexist.
+  function icCardKey(state, n) {
+    return icCardLabel(state, n) + (Engine.canStartChallenge(state, n) ? '+start' : '');
+  }
+
+  function buildBreakCard(kit, state) {
+    var card = kit.el('div', { class: 'card ic-break-card', 'data-broken': String(state.inf.broken) }, [
+      kit.el('div', { class: 'card-title' }, ['Break Infinity']),
+    ]);
+    var btn = kit.el('button', { class: 'btn full-width', 'data-tip': 'breakToggle', tabindex: '0' }, [state.inf.broken ? 'Fix' : 'Break']);
+    btn.addEventListener('click', function () {
+      Engine.setBroken(state, !state.inf.broken);
+      kit.markDirty();
+      kit.save();
+    });
+    card.appendChild(btn);
+    return card;
+  }
+
+  function buildIcCard(kit, state, c) {
+    var n = c.n;
+    var label = icCardLabel(state, n);
+    var canStart = Engine.canStartChallenge(state, n);
+    var best = state.inf.ic.best[n - 1];
+    var statusText = label === 'done' ? 'Done ✓' : label === 'active' ? 'Active' : label === 'available' ? 'Available' : 'Locked';
+    var cls = label === 'done' ? ' owned' : label === 'active' ? ' buyable' : '';
+    var card = kit.el('div', {
+      class: 'card ic-card' + cls,
+      'data-n': String(n),
+      'data-state': icCardKey(state, n),
+      tabindex: '0',
+      'data-tip': 'icCard',
+      'data-tip-i': String(n),
+    }, [
+      kit.el('div', { class: 'card-title' }, ['IC' + n + ' ' + c.name]),
+      kit.el('div', { class: 'iu-effect' }, ['Handicap: ' + c.handicap]),
+      kit.el('div', { class: 'iu-effect' }, ['Reward: ' + c.reward]),
+      kit.el('div', { class: 'stat-line' }, [kit.el('span', { class: 'label' }, ['Status']), kit.el('span', {}, [statusText])]),
+      kit.el('div', { class: 'stat-line' }, [kit.el('span', { class: 'label' }, ['Best']), kit.el('span', {}, [fmtMMSS(best)])]),
+    ]);
+    if (label === 'active') {
+      var exitBtn = kit.el('button', { class: 'btn full-width' }, []);
+      kit.twoStepConfirm(exitBtn, 'Exit', 'Reset run?', function () {
+        Engine.exitChallenge(state);
+        kit.markDirty();
+        kit.save();
+      });
+      card.appendChild(exitBtn);
+    } else if (canStart) {
+      var startBtn = kit.el('button', { class: 'btn full-width', 'data-tip': 'icStart', 'data-tip-i': String(n) }, []);
+      kit.twoStepConfirm(startBtn, 'Start', 'Reset run?', function () {
+        Engine.startChallenge(state, n);
+        kit.markDirty();
+        kit.save();
+      });
+      card.appendChild(startBtn);
+    }
+    return card;
+  }
+
+  function renderICs(kit, state) {
+    var wrap = kit.el('div', { class: 'inf-ics' });
+    if (Engine.canBreak(state)) wrap.appendChild(buildBreakCard(kit, state));
+    Engine.CHALLENGES.forEach(function (c) { wrap.appendChild(buildIcCard(kit, state, c)); });
+    if (Engine.icDoneCount(state) === 9) {
+      var sum = state.inf.ic.best.reduce(function (a, b) { return a + b; }, 0);
+      wrap.appendChild(kit.el('div', { class: 'stat-line', id: 'ic-sigma' }, [
+        kit.el('span', { class: 'label' }, ['ΣIC']),
+        kit.el('span', {}, [fmtMMSS(sum)]),
+      ]));
+    }
+    return wrap;
+  }
+
+  // Every visible number on an IC card (status, best time) is a direct
+  // function of icCardState + best, both of which only change together with
+  // the state that this diff already checks — so a state match means nothing
+  // on the card is stale, and a mismatch (or a Break-card/ΣIC-line
+  // appearance change) is handled by a full rebuild via markDirty.
+  function updateICs(root, kit, state) {
+    var wantBreak = Engine.canBreak(state);
+    var breakCard = root.querySelector('.ic-break-card');
+    if (wantBreak !== !!breakCard) { kit.markDirty(); return; }
+    if (breakCard && breakCard.getAttribute('data-broken') !== String(state.inf.broken)) { kit.markDirty(); return; }
+    var cards = root.querySelectorAll('.ic-card');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var n = Number(card.getAttribute('data-n'));
+      if (card.getAttribute('data-state') !== icCardKey(state, n)) { kit.markDirty(); return; }
+    }
+    var wantSigma = Engine.icDoneCount(state) === 9;
+    if (wantSigma !== !!root.querySelector('#ic-sigma')) kit.markDirty();
+  }
+
+  // ---------- Stars ----------
+
+  function starLineText(state) {
+    return 'SD ' + fmt(state.inf.stars.sdLog) + ' (+' + fmt(Engine.sdRateLog(state)) + '/s) → GP gain ×' + fmt(Engine.starGpLog(state));
+  }
+
+  function starRowText(kind, state) {
+    if (kind === 'star') return 'Star (n=' + state.inf.stars.n + ')';
+    if (kind === 'base') return 'Base ' + (2.75 + 0.275 * state.inf.stars.nb).toFixed(3);
+    return 'Exponent ' + (0.4 + 0.05 * state.inf.stars.ne).toFixed(3);
+  }
+  function starRowCostLog(kind, state) {
+    if (kind === 'star') return Engine.starCostLog(state);
+    if (kind === 'base') return Engine.starBaseCostLog(state);
+    return Engine.starExpCostLog(state);
+  }
+  function starRowCanBuy(kind, state) {
+    if (!state.inf.upg['21;1']) return false;
+    if (kind === 'star') return Engine.canBuyStar(state);
+    if (kind === 'exp' && state.inf.stars.ne >= Engine.TUNE.starExpMax) return false;
+    return state.inf.ipLog >= starRowCostLog(kind, state);
+  }
+  function starRowBuy(kind, state) {
+    if (kind === 'star') return Engine.buyStar(state);
+    if (kind === 'base') return Engine.buyStarBase(state);
+    return Engine.buyStarExp(state);
+  }
+
+  function buildStarRow(kit, state, kind, tipKey) {
+    var row = kit.el('div', { class: 'star-buy-row', 'data-star': kind, tabindex: '0', 'data-tip': tipKey }, [
+      kit.el('div', { class: 'star-buy-label' }, [starRowText(kind, state)]),
+    ]);
+    var btn = kit.el('button', { class: 'btn star-buy-btn' }, [fmt(starRowCostLog(kind, state)) + ' IP']);
+    btn.disabled = !starRowCanBuy(kind, state);
+    btn.addEventListener('click', function () {
+      if (starRowBuy(kind, state)) {
+        kit.markDirty();
+        kit.save();
+      }
+    });
+    row.appendChild(btn);
+    return row;
+  }
+
+  function updateStarRow(row, state) {
+    var kind = row.getAttribute('data-star');
+    var label = row.querySelector('.star-buy-label');
+    if (label) label.textContent = starRowText(kind, state);
+    var btn = row.querySelector('.star-buy-btn');
+    if (btn) {
+      btn.textContent = fmt(starRowCostLog(kind, state)) + ' IP';
+      btn.disabled = !starRowCanBuy(kind, state);
+    }
+  }
+
+  function sdRowText(state, j) {
+    var u = Engine.SD_UPGRADES[j];
+    var level = state.inf.stars.sdU[j];
+    var max = u.max === Infinity ? '∞' : String(u.max);
+    return u.name + ' — Lv ' + level + '/' + max;
+  }
+
+  function buildSdRow(kit, state, j) {
+    var row = kit.el('div', { class: 'card sd-row', 'data-j': String(j), tabindex: '0', 'data-tip': 'sdUpg', 'data-tip-i': String(j) }, [
+      kit.el('div', { class: 'card-title sd-title' }, [sdRowText(state, j)]),
+      kit.el('div', { class: 'iu-effect' }, [Engine.SD_UPGRADES[j].desc]),
+    ]);
+    var btn = kit.el('button', { class: 'btn full-width sd-buy-btn' }, [fmt(Engine.sdUpgCostLog(state, j)) + ' SD']);
+    btn.disabled = !Engine.canBuySdUpg(state, j);
+    btn.addEventListener('click', function () {
+      if (Engine.buySdUpg(state, j)) {
+        kit.markDirty();
+        kit.save();
+      }
+    });
+    row.appendChild(btn);
+    return row;
+  }
+
+  function updateSdRow(row, state, j) {
+    var title = row.querySelector('.sd-title');
+    if (title) title.textContent = sdRowText(state, j);
+    var btn = row.querySelector('.sd-buy-btn');
+    if (btn) {
+      btn.textContent = fmt(Engine.sdUpgCostLog(state, j)) + ' SD';
+      btn.disabled = !Engine.canBuySdUpg(state, j);
+    }
+  }
+
+  function renderStars(kit, state) {
+    var wrap = kit.el('div', { class: 'inf-stars' });
+    wrap.appendChild(kit.el('div', { class: 'stat-line', id: 'star-line', tabindex: '0', 'data-tip': 'sdAmount' }, [
+      kit.el('span', { id: 'star-line-value' }, [starLineText(state)]),
+    ]));
+    wrap.appendChild(buildStarRow(kit, state, 'star', 'starBuy'));
+    wrap.appendChild(buildStarRow(kit, state, 'base', 'starBase'));
+    wrap.appendChild(buildStarRow(kit, state, 'exp', 'starExp'));
+    for (var j = 0; j < Engine.SD_UPGRADES.length; j++) {
+      wrap.appendChild(buildSdRow(kit, state, j));
+    }
+    wrap.appendChild(kit.el('p', { class: 'help' }, ['Stardust resets on Infinity — spend it first.']));
+    return wrap;
+  }
+
+  function updateStars(root, kit, state) {
+    var lineValue = root.querySelector('#star-line-value');
+    if (lineValue) lineValue.textContent = starLineText(state);
+    var starRows = root.querySelectorAll('.star-buy-row');
+    Array.prototype.forEach.call(starRows, function (row) { updateStarRow(row, state); });
+    var sdRows = root.querySelectorAll('.sd-row');
+    Array.prototype.forEach.call(sdRows, function (row) {
+      var j = Number(row.getAttribute('data-j'));
+      updateSdRow(row, state, j);
+    });
   }
 
   // ---------- tab dispatch ----------
@@ -396,7 +823,10 @@
   function renderBody(kit, state) {
     if (subTab === 'gens') return renderGens(kit, state);
     if (subTab === 'tree') return renderTree(kit, state);
-    return renderComingSoon(kit);
+    if (subTab === 'auto') return renderAuto(kit, state);
+    if (subTab === 'ics') return renderICs(kit, state);
+    if (subTab === 'stars') return renderStars(kit, state);
+    return kit.el('div');
   }
 
   function render(container, state, kit) {
@@ -418,6 +848,9 @@
     updateHeader(header, state);
     if (subTab === 'tree') updateTree(body, kit, state);
     else if (subTab === 'gens') updateGens(body, kit, state);
+    else if (subTab === 'auto') updateAuto(body, kit, state);
+    else if (subTab === 'ics') updateICs(body, kit, state);
+    else if (subTab === 'stars') updateStars(body, kit, state);
   }
 
   window.InfinityUI = {

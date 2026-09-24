@@ -223,6 +223,80 @@
     gpChip: function (s) {
       return 'Generator Power boost to mult gain: ×' + fmt(Engine.gpMultLog(s)) + '.';
     },
+
+    // ---- ∞ tab: Auto, ICs, Stars (Task 12) ----
+
+    autoBuy: 'Autobuy: every moment, buys the cheapest affordable level among the rings you’ve enabled.',
+    autoAsc: 'Auto-Ascend: ascends enabled rings as soon as they hit their level cap.',
+    autoPromote: function (s) {
+      var a = s.inf.auto.promote;
+      return 'Auto-Promote: cycles through promotions in your order, promoting once XP reaches '
+        + a.xFactor + '× your current level in the next one (or when progress stalls).';
+    },
+    autoPrestige: function (s) {
+      var a = s.inf.auto.prestige;
+      return 'Auto-Prestige: prestiges when pending P.Mult ≥ ' + a.multX + '× current, or P.Exp would rise by ≥ '
+        + a.expGain + ', or progress has stalled — after at least ' + a.minTime + 's.';
+    },
+    autoInfinity: function (s) {
+      var a = s.inf.auto.infinity;
+      return 'Auto-Infinity (Broken only): goes Infinite once this run would give ≥ ' + fmt(a.minIpLog)
+        + ' IP and has lasted ≥ ' + a.minTime + 's.';
+    },
+    stallSec: function (s) {
+      return 'A run counts as stalled when score hasn’t grown ×10 for this many seconds ('
+        + s.inf.auto.stallSec + 's). Stalls let Auto-Prestige/Promote act early. 0 = off.';
+    },
+    icCard: function (s, n) {
+      var c = Engine.CHALLENGES[n - 1];
+      if (!c) return '';
+      var best = s.inf.ic.best[n - 1];
+      return 'Challenge ' + n + ': ' + c.handicap + '. Reach ' + fmt(Engine.INFINITY_LOG) + ' to complete. Reward: '
+        + c.reward + ', plus +1 to your IP multiplier. Best: ' + (best === null ? '—' : fmtMMSS(best)) + '.';
+    },
+    icStart: 'Starting resets your current run (no IP). You keep upgrades, generators and IP.',
+    breakToggle: function (s) {
+      var T = Engine.TUNE;
+      return 'Broken: score can pass ' + fmt(Engine.INFINITY_LOG) + ' and you choose when to go Infinite. Every e'
+        + T.breakStepLog + ' past e' + T.breakStartLog.toLocaleString('en-US') + ' multiplies IP ×10. Fixed: you go Infinite automatically at '
+        + fmt(Engine.INFINITY_LOG) + '.';
+    },
+    ipBar: function (s) {
+      var T = Engine.TUNE;
+      var k = Engine.breakBonusLog(s);
+      var threshold = T.breakStartLog + T.breakStepLog * (k + 1);
+      return 'IP bonus ×10^' + k + '. Next ×10 at e' + threshold.toLocaleString('en-US') + '.';
+    },
+    starBuy: function (s) {
+      return 'Stars produce Stardust: 0.05 × base^stars per second (' + fmt(Engine.sdRateLog(s)) + '/s now).';
+    },
+    starBase: function (s) {
+      var base = 2.75 + 0.275 * s.inf.stars.nb;
+      return 'Star base ' + base.toFixed(3) + ' → ' + (base + 0.275).toFixed(3) + '. Raises Stardust per Star.';
+    },
+    starExp: function (s) {
+      var exp = 0.4 + 0.05 * s.inf.stars.ne;
+      return 'Stardust exponent ' + exp.toFixed(3) + ' → ' + (exp + 0.05).toFixed(3) + '. Generator Power gain × Stardust^exp.';
+    },
+    sdAmount: function (s) {
+      return 'Stardust ' + fmt(s.inf.stars.sdLog) + '. Resets on Infinity — spend it before you go Infinite.';
+    },
+    sdUpg: function (s, j) {
+      var u = Engine.SD_UPGRADES[j];
+      if (!u) return '';
+      var level = s.inf.stars.sdU[j];
+      var max = u.max === Infinity ? '∞' : String(u.max);
+      var cost = Engine.sdUpgCostLog(s, j);
+      return u.desc + '. Level ' + level + '/' + max + '. Cost ' + fmt(cost) + ' Stardust. Kept through Infinity.';
+    },
+    icChip: function (s) {
+      var n = s.inf.ic.active;
+      var c = Engine.CHALLENGES[n - 1];
+      return c ? ('In Challenge ' + n + ': ' + c.handicap + '.') : '';
+    },
+    confirmInfinity: function (s) {
+      return 'Show a confirmation when you reach ' + fmt(Engine.INFINITY_LOG) + ' instead of going Infinite automatically.';
+    },
   };
 
   // Formats a plain (non-log) multiplier/value for tooltip copy.
@@ -262,6 +336,15 @@
     } catch (e) {
       return String(n);
     }
+  }
+
+  // m:ss for challenge best times, mirroring src/ui-infinity.js's formatter.
+  function fmtMMSS(sec) {
+    if (sec === null || sec === undefined) return '—';
+    var s = Math.round(sec);
+    var m = Math.floor(s / 60);
+    var r = s % 60;
+    return m + ':' + (r < 10 ? '0' : '') + r;
   }
 
   function textForKey(key, i) {
@@ -596,6 +679,21 @@
     if (auto.buy || auto.asc || auto.promote || auto.prestige || auto.infinity) {
       if (markSeen('autoSeen')) {
         hooks.toast('Automation unlocked — configure it in ∞ → Auto.');
+      }
+    }
+    if (Engine.hasUpg(state, '7;1')) {
+      if (markSeen('icSeen')) {
+        hooks.toast('Infinity Challenges unlocked — beat them for permanent rewards.');
+      }
+    }
+    if (Engine.canBreak(state)) {
+      if (markSeen('breakSeen')) {
+        hooks.toast('Break Infinity available — score can now pass ' + fmt(Engine.INFINITY_LOG) + '.');
+      }
+    }
+    if (Engine.hasUpg(state, '21;1')) {
+      if (markSeen('starsSeen')) {
+        hooks.toast('Stars unlocked — they make Stardust, which powers Generators.');
       }
     }
   }
