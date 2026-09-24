@@ -817,11 +817,13 @@ test('offline automation tracks active play at the default step', () => withTune
 
 // Ruling (fix round 3): the UI runs offline catch-up in chunks across
 // animation frames, so one simulate call no longer has a 3 s budget. This is
-// only a sanity bound for 8 h at the default step.
-test('8 h offline with automation at the default step completes in <= 6 s (Node)', () => withTune(FAST_GENS, () => {
+// only a sanity bound for 8 h at the default step (final review: loosened
+// from 6 s, which flaked under parallel test load; the time is logged).
+test('8 h offline with automation at the default step completes in <= 15 s (Node)', (t) => withTune(FAST_GENS, () => {
   const s = trackMk();
   const t0 = Date.now(); E.simulate(s, 8 * 3600); const ms = Date.now() - t0;
-  assert.ok(ms <= 6000, `took ${ms} ms`);
+  t.diagnostic(`8 h simulate took ${ms} ms`);
+  assert.ok(ms <= 15000, `took ${ms} ms`);
 }));
 
 test('offline catch-up in 96 chunks of 300 s equals one 8 h simulate', () => withTune(FAST_GENS, () => {

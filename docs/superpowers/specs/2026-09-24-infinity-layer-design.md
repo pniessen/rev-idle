@@ -41,7 +41,7 @@ This spec extends [2026-09-23-rev-idle-design.md](2026-09-23-rev-idle-design.md)
 | D16 | Time Flux, macros, the IP Adjuster, leaderboards and achievements are out of scope. | None of these are core to the loop. |
 | D17 | UI: one new main tab, **∞**, which appears after the first Infinity. It holds sub-tabs Tree · Gens · Auto · ICs · Stars, and each sub-tab appears once it is unlocked. | This keeps the main tab bar at 6 items on 400 px screens and leaves room for an Eternity layer switcher later. |
 | D18 | Offline progress runs automation and generators, and can perform any number of fixed or auto Infinities. It uses the same **adaptive step** as the sim (§9.1). The **8 h offline cap stays**. | Otherwise idle play does not work, and a shared step rule keeps the sim honest about offline play. The idle pacing profile (§12) has an 8 h night gap, so a player who checks in by the next morning loses nothing. A longer cap would mostly help players who skip days, which the 1–2 week target does not assume. |
-| D19 | Pacing follows the real game and is **mostly idle** (product owner, revised 2026-09-24; challenge timings revised 2026-09-24 per Task 14 rulings). IC4 and IC9 take 3–6 h each; IC1–IC3 take 20–90 min each (floor 15 min); IC5–IC8 are informational, kept faithful to the wiki's handicaps rather than pinned to a duration band. First Infinity to the IP-cap finale takes 7–14 days of game time under the idle check-in profile. All targets are in §12. | The layer is meant to be played over weeks, with automation and offline progress doing most of the work. |
+| D19 | Pacing follows the real game and is **mostly idle** (product owner, revised 2026-09-24; challenge timings revised 2026-09-24 per Task 14 rulings). IC4 and IC9 take 3–6 h each; IC1 and IC2 take 20–90 min each and IC3 30–90 min (floor 15 min); IC5–IC8 are informational, kept faithful to the wiki's handicaps rather than pinned to a duration band. First Infinity to the IP-cap finale takes 7–14 days of game time under the idle check-in profile. All targets are in §12. | The layer is meant to be played over weeks, with automation and offline progress doing most of the work. |
 
 ---
 
@@ -52,7 +52,7 @@ This spec extends [2026-09-23-rev-idle-design.md](2026-09-23-rev-idle-design.md)
 - **Not broken, or inside a challenge:** after every tick, `scoreLog = min(scoreLog, INFINITY_LOG)`. `canInfinity(s)` is `scoreLog ≥ INFINITY_LOG`.
 - **First Infinity** (`infinities === 0`): the UI shows the existing modal and the player confirms. When it is triggered offline, the score stays capped and the modal shows on return, as today.
 - **Later fixed Infinities** (including challenge completions): the engine calls `goInfinite(s)` itself at the end of `tick`.
-- **Exception:** when `infinities === 0` or `inf.auto.confirmInfinity` is on, `tick` only sets `inf.pendingConfirm = true`. The score stays capped, and the UI shows the modal, which calls `goInfinite`.
+- **Exception:** when `infinities === 0` or `inf.auto.confirmInfinity` is on, `tick` only sets `inf.pendingConfirm = true`. The score stays capped, and the UI shows the modal, which calls `goInfinite`. While an Infinity awaits confirmation (`awaitingInfinity(s)`: at the cap and pending, or about to be), `prestige`/`promote` are refused and automation does not buy, ascend, promote or prestige, so a click that lands between the capping tick and the modal cannot reset the run. `postTick` clears a `pendingConfirm` left set below the cap (e.g. an old save), and the UI shows the modal only while `pendingConfirm && canInfinity` (and closes it otherwise).
 - **Broken (and no challenge active):** there is no cap. `canInfinity(s)` is still `scoreLog ≥ INFINITY_LOG`. The player infinites manually through the button, or Auto-Infinity does it (§6.5).
 
 ### 2.2 IP gain
@@ -482,7 +482,7 @@ All existing signatures are kept.
   - ∞ is visible once `infinities ≥ 1` or `ipLog > -Infinity`.
   - At widths under 420 px, Stats and Settings collapse to icon buttons (inline SVG glyphs, not emoji), so labels stay at ≥ 12 px.
 - **∞ tab layout:**
-  - A sticky header: `IP 1.23e45 · +X next · ∞ 1,234`. When broken it adds the IP bar.
+  - A sticky header: `IP 1.23e45 · +X next · ∞ 1,234`. At the IP cap (finale) the `+X next` part is hidden. The IP bar is not in this header; it lives on the Prestige tab (§10.3).
   - A sub-tab row: **Tree · Gens · Auto · ICs · Stars**.
     - Gens and Auto appear with 1;1.
     - ICs appears with 7;1.
@@ -504,7 +504,7 @@ All existing signatures are kept.
   - A GP line: `GP 1.2e5 → Mult Gain ×2,345 (^0.666)`.
   - Rows G1…G(highest bought + 1), each with amount, `×mult`, `+rate/s` of the next tier down, and a Buy button showing the cost.
   - A footnote line appears when the softcap is active.
-- **Auto.** One collapsible card per unlocked automation.
+- **Auto.** One card per unlocked automation (always expanded; not collapsible).
   - Buy and Ascend: a master toggle plus a 5×2 grid of colour-dot toggles.
   - Promote: a master toggle; an order picker (4 chips, tap to cycle positions); `×` factor; min time.
   - Prestige: a master toggle; multX; expGain; min time.
@@ -534,7 +534,7 @@ All existing signatures are kept.
 - **Modals:**
   - The first-Infinity modal copy changes to "You gained 1 Infinity Point. Spend it in the new ∞ tab."
   - The Eternity finale (D15) shows once.
-- **Toasts:** automatic Infinity `+X IP (∞ n)`, challenge completed, and upgrade bought (only when bought via the offline summary).
+- **Toasts:** automatic Infinity `+X IP (∞ n)` (one per real Infinity — detected from `stats.lastInfinities`, so passive 18;1 Infinities do not toast), `Challenge n completed` in live play (offline catch-up lists completions in its summary instead), and upgrade bought (only when bought via the offline summary).
 
 ### 10.4 Tooltips
 These use the concurrent help system: a `data-tip` key with optional `data-tip-i`, `TIPS[key]` as a string or `function(s, i)`, or a `tipFn` on the element.
@@ -598,7 +598,7 @@ These use the concurrent help system: a `data-tip` key with optional `data-tip-i
 | `ic4Pow` | 0.32 (wiki 0.4; see Deviations) | [W] IC4 gain power (last-resort lever) |
 | `ic9Circles` | 3 (wiki 4; see Deviations) | [W] IC9 circle limit (last-resort lever) |
 | `breakStartLog`, `breakStepLog` | 4100, 74 (wiki 2772, 308; see Deviations) | [W] IP bar: ×10 per `breakStepLog` of score past `breakStartLog` (wiki: ×10 at e3,080, then every e308) |
-| `starStep` | `[[0,3],[18,7],[30,'grow']]` | [W]/[R] star cost steps: 3 below index 18, 7 below 30, then `7 + (j−29)` |
+| `starStep` | `[[0,3],[18,7],[30,'grow']]` — **hardcoded in `starCostLog`, not a TUNE key** | [W]/[R] star cost steps: 3 below index 18, 7 below 30, then `7 + (j−29)` |
 | `dtRunDiv`, `dtMin`, `dtMax`, `dtFixed` | 50, 0.1, 2, 1 | adaptive step (§9.1) |
 
 ---
