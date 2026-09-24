@@ -234,6 +234,22 @@ test('lastInfinities keeps 10; IP is capped at INFINITY_LOG', () => {
   assert.equal(s.inf.ipLog, E.INFINITY_LOG); assert.equal(s.stats.fastestInfinity, 1);
 });
 
+test('goInfinite clamps ipLog at INFINITY_LOG when a single gain would cross it', () => {
+  // Starting already at the cap (as above) can't distinguish "clamped" from
+  // "no-op float addition" — logAdd(cap, anything small) is cap either way.
+  // This test starts just BELOW the cap and forces a huge, real ipGainLog
+  // (via the Break bonus, §8) that is provably large enough to push the sum
+  // past INFINITY_LOG without the Math.min clamp in goInfinite.
+  const s = E.newState();
+  s.inf.ipLog = E.INFINITY_LOG - 0.05;
+  s.inf.broken = true;
+  s.scoreLog = E.TUNE.breakStartLog + E.TUNE.breakStepLog * 320; // breakBonusLog(s) === 320
+  assert.equal(E.breakBonusLog(s), 320);
+  assert.ok(E.canInfinity(s));
+  assert.ok(E.goInfinite(s));
+  assert.equal(s.inf.ipLog, E.INFINITY_LOG);
+});
+
 test('fixed Infinity: first waits for confirmation, later ones are automatic', () => {
   const s = atInfinity(E.newState());
   E.tick(s, 0.01);
