@@ -10,8 +10,230 @@
     genRate: 1, gpExp0: 0.666, genSoftcapLog: 1000,
     genCost: [[Math.log10(32), Math.log10(5)], [Math.log10(150), 1], [5, 2], [9, 3], [15, 4], [21, 5], [27, 6], [33, 7], [39, 8], [45, 9]],
   });
+  Object.assign(E.TUNE, {
+    u51Div: 600, u51Cap: 10, u52K: 0.1, u62K: 0.25, u162K: 0.05, u8TimeDiv: 60,
+    u121Pow: 0.5, u171Pow: 0.25, u161Pow: 0.2, u141K: 0.1,
+    icRefSec: 36000, ctfMax: 1e4, u163Ref: 3600, passiveInfK: 2, u201Ref: 600, u201Cap: 100,
+    gpExp14: 0.75, gpExp19: 0.9,
+  });
   const I = E._inf; I.MOD_FNS = []; I.IP_FNS = []; I.PRE_FNS = []; I.GEN_FNS = []; I.GPEXP_FNS = [];
   I.starGpLog = () => 0; // Task 9 replaces this
+  const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+  const icDoneCount = (s) => s.inf.ic.done.filter(Boolean).length;
+  const infGain = (s) => (s.inf.ic.done[8] ? 2 : 1);
+
+  // ===== Infinity Upgrade tree (spec §4) =====
+  const UPGRADES = [
+    // Phase A
+    { id: '1;1', col: 1, row: 1, name: 'Infinity Generation', cost: 1, phase: 'A', req: [], desc: 'G1 ×max(1,∞). Unlocks Generators (grants 1 free G1) and Autobuy.' },
+    { id: '2;1', col: 2, row: 1, name: 'Exponential Box', cost: 1, phase: 'A', req: ['1;1'], desc: 'commonExp +0.01' },
+    { id: '2;2', col: 2, row: 2, name: 'Auto Ascend', cost: 1, phase: 'A', req: ['1;1'], desc: 'Unlocks Auto-Ascend' },
+    { id: '3;1', col: 3, row: 1, name: 'Fast Laps', cost: 1, phase: 'A', req: 'prev', desc: 'Lap speed ×1.1' },
+    { id: '3;2', col: 3, row: 2, name: 'Auto Work', cost: 1, phase: 'A', req: 'prev', desc: 'Unlocks Auto-Promote' },
+    { id: '4;1', col: 4, row: 1, name: 'Even Faster Laps', cost: 3, phase: 'A', req: 'prev', desc: 'Lap speed ×1.2' },
+    { id: '5;1', col: 5, row: 1, name: 'Long Term Prestiging', cost: 3, phase: 'A', req: ['4;1'], desc: 'P.Mult gain ×min(10, 1+√(t/600))' },
+    { id: '5;2', col: 5, row: 2, name: 'Solid Exponent', cost: 3, phase: 'A', req: ['4;1'], desc: 'P.Exp gain ×(1 + 0.1·log2(1+∞))' },
+    { id: '5;3', col: 5, row: 3, name: 'Auto Prestige', cost: 3, phase: 'A', req: ['4;1'], desc: 'Unlocks Auto-Prestige' },
+    { id: '6;1', col: 6, row: 1, name: 'Mighty Ascension', cost: 3, phase: 'A', req: ['5;1', '5;2'], desc: 'Ascension power base +2' },
+    { id: '6;2', col: 6, row: 2, name: 'Ascend to Ascend', cost: 3, phase: 'A', req: ['5;2', '5;3'], desc: 'Asc power ×(1 + 0.25·log10(1+∞))' },
+    // Phase B
+    { id: '7;1', col: 7, row: 1, name: 'Challenges!', cost: 5, phase: 'B', req: 'prev', desc: 'Unlocks Infinity Challenges' },
+    { id: '8;1', col: 8, row: 1, name: 'Generator and Time', cost: 16, phase: 'B', req: ['7;1'], desc: 'G1 ×(1 + t/60)^0.5' },
+    { id: '8;2', col: 8, row: 2, name: 'Generator and Power', cost: 32, phase: 'B', req: ['7;1'], desc: 'G1 ×(1 + log10(1+GP))' },
+    { id: '8;3', col: 8, row: 3, name: 'Generator and Constant', cost: 16, phase: 'B', req: ['7;1'], desc: 'G1 ×5' },
+    { id: '9;1', col: 9, row: 1, name: 'Generator 2 and Time', cost: 128, phase: 'B', req: 'prev', desc: 'G2 ×(1 + t/60)^0.5' },
+    { id: '9;2', col: 9, row: 2, name: 'Generator 2 and Constant', cost: 128, phase: 'B', req: 'prev', desc: 'G2 ×3' },
+    { id: '11;1', col: 11, row: 1, name: 'Weak Generators', cost: 300, phase: 'B', req: 'prev', desc: 'G1 ×(1 + log10(1+IP))' },
+    { id: '11;2', col: 11, row: 2, name: 'Medium Generators', cost: 400, phase: 'B', req: 'prev', desc: 'G2 ×(1 + log10(1+IP))^0.5' },
+    { id: '12;1', col: 12, row: 1, name: 'First, But Better', cost: 512, phase: 'B', req: 'prev', desc: 'G2 ×max(1,∞)^0.5' },
+    { id: '13;1', col: 13, row: 1, name: 'A Little Gift', cost: 600, phase: 'B', req: 'prev', desc: 'Ascension power base +1' },
+    { id: '14;1', col: 14, row: 1, name: 'First for the First', cost: 1024, phase: 'B', req: 'prev', desc: 'P1 variable part ×(1 + √promo0·0.1)' },
+    { id: '14;2', col: 14, row: 2, name: 'Efficiency V', cost: 1024, phase: 'B', req: 'prev', desc: 'gpExp → 0.75' },
+    // Phase C
+    { id: '15;1', col: 15, row: 1, name: 'Auto Infinity', cost: 2048, phase: 'C', req: 'prev', desc: 'Unlocks Auto-Infinity' },
+    { id: '15;2', col: 15, row: 2, name: 'Fast IP Gain', cost: 2048, phase: 'C', req: 'prev', desc: 'IP ×ctf^0.5' },
+    { id: '15;3', col: 15, row: 3, name: 'First Generator Power', cost: 2048, phase: 'C', req: 'prev', desc: 'G1 ×ctf' },
+    { id: '15;4', col: 15, row: 4, name: 'Second Generator Power', cost: 2048, phase: 'C', req: 'prev', desc: 'G2 ×ctf^0.75' },
+    { id: '16;1', col: 16, row: 1, name: 'Infinities to IP', cost: 5000, phase: 'C', req: 'prev', desc: 'IP ×max(1,∞)^0.2' },
+    { id: '16;2', col: 16, row: 2, name: 'Stronger Ascension Power', cost: 5000, phase: 'C', req: 'prev', desc: 'Asc power ×(1 + 0.05·log2(1+∞))' },
+    { id: '16;3', col: 16, row: 3, name: 'Empowered Promotions', cost: 5000, phase: 'C', req: 'prev', desc: 'P4 variable part ×clamp(3600/ICbest9, 1, 10)^0.5' },
+    { id: '17;1', col: 17, row: 1, name: "Third's Turn", cost: 1e6, phase: 'C', req: 'prev', desc: 'G3 ×max(1,∞)^0.25' },
+    { id: '17;3', col: 17, row: 3, name: 'Boost for the First', cost: 1e6, phase: 'C', req: 'prev', desc: 'G1 ×10' },
+    { id: '18;1', col: 18, row: 1, name: 'Passive Infinities', cost: 2e11, phase: 'C', req: 'prev', desc: '∞/s = passiveInfK × infGain / max(1, fastestInfinity) × sdU4mult' },
+    { id: '18;3', col: 18, row: 3, name: 'Third from Second', cost: 1e11, phase: 'C', req: 'prev', desc: 'G3 ×(1 + b2)' },
+    { id: '19;1', col: 19, row: 1, name: 'Almost One', cost: 1e12, phase: 'C', req: 'prev', desc: 'gpExp → 0.9' },
+    { id: '19;3', col: 19, row: 3, name: 'Challenge Efficiency', cost: 1e12, phase: 'C', req: 'prev', desc: 'Lap speed ×3' },
+    { id: '20;1', col: 20, row: 1, name: 'As Fast as Strong', cost: 1e21, phase: 'C', req: 'prev', desc: 'All generators ×clamp(600/fastestInfinity, 1, 100)^0.5' },
+    { id: '21;1', col: 21, row: 1, name: 'A Falling Star', cost: 1e33, phase: 'C', req: ['20;1'], desc: 'Unlocks Stars' },
+  ];
+  const UPG_BY_ID = new Map(UPGRADES.map((u) => [u.id, u]));
+  const UPG_COLS = Array.from(new Set(UPGRADES.map((u) => u.col))).sort((a, b) => a - b);
+  function prevCol(col) {
+    let best = null;
+    for (const c of UPG_COLS) { if (c < col) best = c; else break; }
+    return best;
+  }
+  const upgById = (id) => UPG_BY_ID.get(id);
+  const hasUpg = (s, id) => !!s.inf.upg[id];
+  function upgReqMet(s, id) {
+    const u = upgById(id);
+    if (!u) return false;
+    if (u.req === 'prev') {
+      const pc = prevCol(u.col);
+      if (pc === null) return true;
+      return UPGRADES.some((v) => v.col === pc && hasUpg(s, v.id));
+    }
+    if (u.req.length === 0) return true;
+    return u.req.some((id2) => hasUpg(s, id2));
+  }
+  function canBuyUpgrade(s, id) {
+    const u = upgById(id);
+    if (!u) return false;
+    if (hasUpg(s, id)) return false;
+    if (!upgReqMet(s, id)) return false;
+    return s.inf.ipLog >= Math.log10(u.cost);
+  }
+  function buyUpgrade(s, id) {
+    if (!canBuyUpgrade(s, id)) return false;
+    const u = upgById(id);
+    s.inf.ipLog = E.logSub(s.inf.ipLog, Math.log10(u.cost));
+    s.inf.upg[id] = true;
+    if (id === '1;1' && s.inf.gens[0].b === 0) s.inf.gens[0] = { b: 1, aLog: 0 };
+    return true;
+  }
+
+  // ===== Helpers (spec §4/§8) =====
+  function ctf(s) {
+    const T = E.TUNE;
+    if (!s.inf.ic.done.every(Boolean)) return 1;
+    const sum = s.inf.ic.best.reduce((a, b) => a + b, 0);
+    return Math.min(T.ctfMax, Math.max(1, T.icRefSec / sum));
+  }
+  function sdU4Mult(s) {
+    return Math.min(62.62, Math.pow(1.05, s.inf.stars.sdU[3]));
+  }
+  function passiveInfRate(s) {
+    const T = E.TUNE;
+    if (!hasUpg(s, '18;1') || s.stats.fastestInfinity === null) return 0;
+    return T.passiveInfK * infGain(s) / Math.max(1, s.stats.fastestInfinity) * sdU4Mult(s);
+  }
+
+  // ===== Contributors: MOD_FNS =====
+  I.MOD_FNS.push((s, m) => {
+    if (hasUpg(s, '3;1')) m.lapMult *= 1.1;
+    if (hasUpg(s, '4;1')) m.lapMult *= 1.2;
+    if (hasUpg(s, '19;3')) m.lapMult *= 3;
+  });
+  I.MOD_FNS.push((s, m) => {
+    if (hasUpg(s, '2;1')) m.expAdd += 0.01 + Math.min(0.5, 0.01 * s.inf.stars.sdU[2]);
+  });
+  I.MOD_FNS.push((s, m) => {
+    if (hasUpg(s, '6;1')) m.ascBase += 2;
+    if (hasUpg(s, '13;1')) m.ascBase += 1;
+  });
+  I.MOD_FNS.push((s, m) => {
+    const T = E.TUNE;
+    if (hasUpg(s, '6;2')) m.ascMult *= (1 + T.u62K * Math.log10(1 + s.infinities));
+    if (hasUpg(s, '16;2')) m.ascMult *= (1 + T.u162K * Math.log2(1 + s.infinities));
+  });
+  I.MOD_FNS.push((s, m) => {
+    const T = E.TUNE;
+    if (hasUpg(s, '5;1')) m.pMultMult *= Math.min(T.u51Cap, 1 + Math.sqrt(s.inf.t / T.u51Div));
+    if (hasUpg(s, '5;2')) m.pExpMult *= 1 + T.u52K * Math.log2(1 + s.infinities);
+  });
+  I.MOD_FNS.push((s, m) => {
+    const T = E.TUNE;
+    if (hasUpg(s, '14;1')) m.v[0] *= 1 + Math.sqrt(s.promo[0]) * T.u141K;
+    if (hasUpg(s, '16;3') && s.inf.ic.done[8]) {
+      m.v[3] *= Math.sqrt(clamp(T.u163Ref / s.inf.ic.best[8], 1, 10));
+    }
+  });
+
+  // ===== Contributors: GEN_FNS (log10 factors) =====
+  function log1p(xLog) { return E.logAdd(0, xLog); } // log10(1+x) for x = 10**xLog
+  I.GEN_FNS.push((s, k) => {
+    let L = 0;
+    const T = E.TUNE;
+    if (k === 0) {
+      if (hasUpg(s, '8;1')) L += 0.5 * Math.log10(1 + s.inf.t / T.u8TimeDiv);
+      if (hasUpg(s, '8;2')) L += Math.log10(1 + log1p(s.inf.gpLog));
+      if (hasUpg(s, '8;3')) L += Math.log10(5);
+      if (hasUpg(s, '11;1')) L += Math.log10(1 + log1p(s.inf.ipLog));
+      if (hasUpg(s, '15;3')) L += Math.log10(ctf(s));
+      if (hasUpg(s, '17;3')) L += 1;
+    } else if (k === 1) {
+      if (hasUpg(s, '9;1')) L += 0.5 * Math.log10(1 + s.inf.t / T.u8TimeDiv);
+      if (hasUpg(s, '9;2')) L += Math.log10(3);
+      if (hasUpg(s, '11;2')) L += 0.5 * Math.log10(1 + log1p(s.inf.ipLog));
+      if (hasUpg(s, '12;1')) L += T.u121Pow * Math.log10(Math.max(1, s.infinities));
+      if (hasUpg(s, '15;4')) L += 0.75 * Math.log10(ctf(s));
+    } else if (k === 2) {
+      if (hasUpg(s, '17;1')) L += T.u171Pow * Math.log10(Math.max(1, s.infinities));
+      if (hasUpg(s, '18;3')) L += Math.log10(1 + s.inf.gens[1].b);
+    }
+    if (hasUpg(s, '20;1') && s.stats.fastestInfinity !== null) {
+      L += 0.5 * Math.log10(clamp(T.u201Ref / s.stats.fastestInfinity, 1, T.u201Cap));
+    }
+    return L;
+  });
+
+  // ===== Contributors: IP_FNS =====
+  I.IP_FNS.push((s) => {
+    let g = 0;
+    if (hasUpg(s, '15;2')) g += 0.5 * Math.log10(ctf(s));
+    if (hasUpg(s, '16;1')) g += E.TUNE.u161Pow * Math.log10(Math.max(1, s.infinities));
+    return g;
+  });
+
+  // ===== Contributors: GPEXP_FNS =====
+  I.GPEXP_FNS.push((s) => (hasUpg(s, '14;2') ? E.TUNE.gpExp14 : null));
+  I.GPEXP_FNS.push((s) => (hasUpg(s, '19;1') ? E.TUNE.gpExp19 : null));
+
+  // ===== Contributors: PRE_FNS (passive Infinities) =====
+  I.PRE_FNS.push((s, dt) => { s.infinities += passiveInfRate(s) * dt; });
+
+  // ===== upgEffect: current live value/multiplier for display =====
+  function upgEffect(s, id) {
+    const T = E.TUNE;
+    const inf = Math.max(1, s.infinities);
+    switch (id) {
+      case '2;2': case '3;2': case '5;3': case '7;1': case '15;1': case '21;1':
+        return null;
+      case '1;1': return Math.max(1, s.infinities);
+      case '2;1': return 0.01 + Math.min(0.5, 0.01 * s.inf.stars.sdU[2]);
+      case '3;1': return 1.1;
+      case '4;1': return 1.2;
+      case '5;1': return Math.min(T.u51Cap, 1 + Math.sqrt(s.inf.t / T.u51Div));
+      case '5;2': return 1 + T.u52K * Math.log2(1 + s.infinities);
+      case '6;1': return 2;
+      case '6;2': return 1 + T.u62K * Math.log10(1 + s.infinities);
+      case '8;1': case '9;1': return Math.pow(1 + s.inf.t / T.u8TimeDiv, 0.5);
+      case '8;2': return 1 + log1p(s.inf.gpLog);
+      case '8;3': return 5;
+      case '9;2': return 3;
+      case '11;1': return 1 + log1p(s.inf.ipLog);
+      case '11;2': return Math.sqrt(1 + log1p(s.inf.ipLog));
+      case '12;1': return Math.pow(inf, T.u121Pow);
+      case '13;1': return 1;
+      case '14;1': return 1 + Math.sqrt(s.promo[0]) * T.u141K;
+      case '14;2': return T.gpExp14;
+      case '15;2': return Math.pow(ctf(s), 0.5);
+      case '15;3': return ctf(s);
+      case '15;4': return Math.pow(ctf(s), 0.75);
+      case '16;1': return Math.pow(inf, T.u161Pow);
+      case '16;2': return 1 + T.u162K * Math.log2(1 + s.infinities);
+      case '16;3': return s.inf.ic.done[8] ? Math.sqrt(clamp(T.u163Ref / s.inf.ic.best[8], 1, 10)) : 1;
+      case '17;1': return Math.pow(inf, T.u171Pow);
+      case '17;3': return 10;
+      case '18;1': return passiveInfRate(s);
+      case '18;3': return 1 + s.inf.gens[1].b;
+      case '19;1': return T.gpExp19;
+      case '19;3': return 3;
+      case '20;1': return s.stats.fastestInfinity === null ? 1
+        : Math.sqrt(clamp(T.u201Ref / s.stats.fastestInfinity, 1, T.u201Cap));
+      default: return null;
+    }
+  }
 
   function mods(s) {
     const d = E.DEFAULT_MODS;
@@ -19,8 +241,6 @@
     for (const f of I.MOD_FNS) f(s, m);
     return m;
   }
-  const icDoneCount = (s) => s.inf.ic.done.filter(Boolean).length;
-  const infGain = (s) => (s.inf.ic.done[8] ? 2 : 1);
   function breakBonusLog(s) {
     if (!s.inf.broken || s.inf.ic.active) return 0;
     return Math.max(0, Math.floor((s.scoreLog - E.TUNE.breakStartLog) / E.TUNE.breakStepLog));
@@ -129,5 +349,6 @@
   Object.assign(E, {
     goInfinite, resetForChallenge, icDoneCount, ipGainLog, infGain, breakBonusLog,
     GEN_COUNT, genCostLog, canBuyGen, buyGen, genMultLog, genSoftcap, gpExp, gpMultLog,
+    UPGRADES, upgById, hasUpg, upgReqMet, canBuyUpgrade, buyUpgrade, upgEffect, ctf, passiveInfRate, sdU4Mult,
   });
 })(typeof module !== 'undefined' && module.exports ? require('./engine.js') : window.Engine);

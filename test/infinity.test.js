@@ -326,3 +326,94 @@ test('GP multiplies mult gain by GP^0.666 (wiki: GP 16 -> ~6.35)', () => {
   close(E.multGainPerLapLog(s, 0), E.TUNE.multGainLog0 + E.gpMultLog(s));
   s.inf.gpLog = -2; assert.equal(E.gpMultLog(s), 0);
 });
+
+const own = (s, ...ids) => { for (const id of ids) s.inf.upg[id] = true; return s; };
+
+test('tree: 38 unique nodes with wiki costs; trimmed nodes absent', () => {
+  assert.equal(E.UPGRADES.length, 38);
+  assert.equal(new Set(E.UPGRADES.map((u) => u.id)).size, 38);
+  const cost = (id) => E.upgById(id).cost;
+  assert.equal(cost('1;1'), 1); assert.equal(cost('3;2'), 1); assert.equal(cost('4;1'), 3); assert.equal(cost('7;1'), 5);
+  assert.equal(cost('8;2'), 32); assert.equal(cost('11;2'), 400); assert.equal(cost('14;2'), 1024);
+  assert.equal(cost('16;3'), 5000); assert.equal(cost('17;1'), 1e6); assert.equal(cost('18;1'), 2e11);
+  assert.equal(cost('19;1'), 1e12); assert.equal(cost('20;1'), 1e21); assert.equal(cost('21;1'), 1e33);
+  for (const gone of ['10;1', '17;2', '18;2', '19;2', '20;2']) assert.equal(E.upgById(gone), undefined);
+  assert.deepEqual(['A', 'B', 'C'].map((p) => E.UPGRADES.filter((u) => u.phase === p).length), [11, 12, 15]);
+});
+
+test('prerequisites', () => {
+  const s = E.newState();
+  assert.ok(E.upgReqMet(s, '1;1')); assert.ok(!E.upgReqMet(s, '2;1'));
+  own(s, '1;1', '2;2'); assert.ok(E.upgReqMet(s, '3;1')); assert.ok(E.upgReqMet(s, '3;2'));
+  own(s, '3;2', '4;1', '5;3');
+  assert.ok(!E.upgReqMet(s, '6;1')); assert.ok(E.upgReqMet(s, '6;2'));
+  own(s, '6;2'); assert.ok(E.upgReqMet(s, '7;1'));
+  own(s, '7;1', '8;3'); assert.ok(E.upgReqMet(s, '9;1')); assert.ok(!E.upgReqMet(s, '11;1'));
+  own(s, '9;2'); assert.ok(E.upgReqMet(s, '11;1'));
+  assert.ok(!E.upgReqMet(s, '21;1')); own(s, '20;1'); assert.ok(E.upgReqMet(s, '21;1'));
+});
+
+test('buyUpgrade spends IP; 1;1 grants a free G1', () => {
+  const s = E.newState(); s.inf.ipLog = Math.log10(3);
+  assert.ok(!E.canBuyUpgrade(s, '2;1'));
+  assert.ok(E.buyUpgrade(s, '1;1'));
+  close(s.inf.ipLog, Math.log10(2)); assert.deepEqual(s.inf.gens[0], { b: 1, aLog: 0 });
+  assert.ok(!E.buyUpgrade(s, '1;1'));
+  assert.ok(E.buyUpgrade(s, '2;1')); assert.ok(E.buyUpgrade(s, '2;2'));
+  assert.equal(s.inf.ipLog, -Infinity); assert.ok(!E.canBuyUpgrade(s, '3;1'));
+});
+
+test('Revolution-side effects', () => {
+  const s = E.newState();
+  own(s, '3;1', '4;1'); close(E.mods(s).lapMult, 1.32);
+  own(s, '19;3'); close(E.mods(s).lapMult, 3.96);
+  own(s, '2;1'); close(E.mods(s).expAdd, 0.01);
+  own(s, '6;1'); assert.equal(E.mods(s).ascBase, 12); own(s, '13;1'); assert.equal(E.mods(s).ascBase, 13);
+  s.infinities = 9; own(s, '6;2'); close(E.mods(s).ascMult, 1.25);
+  s.infinities = 3; own(s, '16;2'); close(E.mods(s).ascMult, (1 + 0.25 * Math.log10(4)) * 1.1);
+  s.inf.t = 600; own(s, '5;1'); close(E.mods(s).pMultMult, 2);
+  own(s, '5;2'); close(E.mods(s).pExpMult, 1.2);
+  s.promo = [16, 0, 0, 0]; own(s, '14;1'); close(E.mods(s).v[0], 1.4);
+});
+
+test('generator-side effects', () => {
+  const s = withGens(E.newState()); s.infinities = 16;
+  const g1 = () => E.genMultLog(s, 0), g2 = () => E.genMultLog(s, 1), g3 = () => E.genMultLog(s, 2);
+  let b = g1();
+  own(s, '8;3'); close(g1(), b + Math.log10(5)); b = g1();
+  s.inf.t = 60; own(s, '8;1'); close(g1(), b + Math.log10(Math.SQRT2)); b = g1();
+  s.inf.gpLog = Math.log10(99); own(s, '8;2'); close(g1(), b + Math.log10(3)); b = g1();
+  s.inf.ipLog = Math.log10(99); own(s, '11;1'); close(g1(), b + Math.log10(3)); b = g1();
+  own(s, '17;3'); close(g1(), b + 1);
+  b = g2();
+  own(s, '9;2'); close(g2(), b + Math.log10(3)); b = g2();
+  own(s, '9;1'); close(g2(), b + Math.log10(Math.SQRT2)); b = g2();
+  own(s, '11;2'); close(g2(), b + 0.5 * Math.log10(3)); b = g2();
+  own(s, '12;1'); close(g2(), b + Math.log10(4));
+  b = g3();
+  own(s, '17;1'); close(g3(), b + Math.log10(2)); b = g3();
+  s.inf.gens[1].b = 4; own(s, '18;3'); close(g3(), b + Math.log10(5));
+  own(s, '14;2'); close(E.gpExp(s), 0.75); own(s, '19;1'); close(E.gpExp(s), 0.9);
+});
+
+test('Break-era effects: ctf, IP upgrades, 16;3, 20;1, 18;1', () => {
+  const s = withGens(E.newState());
+  assert.equal(E.ctf(s), 1);
+  s.inf.ic.done = Array(9).fill(true); s.inf.ic.best = [337.5, 337.5, 337.5, 337.5, 337.5, 337.5, 337.5, 337.5, 900];
+  close(E.ctf(s), 10);
+  let ip = E.ipGainLog(s); own(s, '15;2'); close(E.ipGainLog(s), ip + 0.5);
+  s.infinities = 32; ip = E.ipGainLog(s); own(s, '16;1'); close(E.ipGainLog(s), ip + Math.log10(2));
+  const g1 = E.genMultLog(s, 0); own(s, '15;3'); close(E.genMultLog(s, 0), g1 + 1);
+  s.inf.gens[1].b = 1; const g2 = E.genMultLog(s, 1); own(s, '15;4'); close(E.genMultLog(s, 1), g2 + 0.75);
+  const v3 = E.mods(s).v[3]; own(s, '16;3'); close(E.mods(s).v[3], v3 * 2);
+  const all = [0, 1, 2].map((k) => E.genMultLog(s, k));
+  s.stats.fastestInfinity = 6; own(s, '20;1'); [0, 1, 2].forEach((k) => close(E.genMultLog(s, k), all[k] + 1));
+  assert.equal(E.passiveInfRate(s), 0); own(s, '18;1');
+  const rate = E.passiveInfRate(s); close(rate, E.TUNE.passiveInfK * E.infGain(s) / 6);
+  const inf0 = s.infinities; E.tick(s, 3); close(s.infinities, inf0 + 3 * rate);
+  assert.equal(E.sdU4Mult(s), 1);
+});
+
+test('upgEffect reports live values', () => {
+  const s = own(E.newState(), '3;1'); close(E.upgEffect(s, '3;1'), 1.1); assert.equal(E.upgEffect(s, '2;2'), null);
+});
