@@ -80,3 +80,60 @@ test('simulate equals many ticks roughly', () => {
   for (let i = 0; i < 100; i++) E.tick(b, 1);
   close(a.scoreLog, b.scoreLog, 1e-6);
 });
+
+test('buy refuses locked circle', () => {
+  const s = E.newState();
+  s.scoreLog = 1000;
+  assert.equal(E.buy(s, 1, 1), 0);
+  assert.equal(s.circles[1].level, 0);
+});
+
+test('ascend at cap', () => {
+  const s = E.newState(); const c = s.circles[0];
+  c.level = 100; c.multLog = 1;
+  assert.ok(E.canAscend(s, 0));
+  assert.ok(E.ascend(s, 0));
+  assert.equal(c.level, 5); assert.equal(c.ascensions, 1);
+  assert.equal(E.levelCap(c), 110);
+  close(c.multGainLog, -1); close(c.multLog, 1);
+  assert.ok(!E.canAscend(s, 0));
+});
+
+test('prestige gains and reset', () => {
+  const s = E.newState();
+  s.scoreLog = 9.9; assert.ok(!E.canPrestige(s));
+  s.scoreLog = 10; assert.ok(E.canPrestige(s));
+  const g = E.pendingPrestige(s);
+  close(g.pMult, 2.56 * 7 ** 2.25); close(g.pExp, 1 + 5 / 225);
+  E.prestige(s);
+  close(s.pMult, g.pMult); assert.equal(s.scoreLog, -Infinity);
+  assert.equal(s.circles[0].level, 5); assert.equal(s.prestigeReqLog, 10);
+  s.scoreLog = 10; assert.ok(E.canPrestige(s)); // same threshold ok
+  s.prestigeReqLog = 12; assert.ok(!E.canPrestige(s));
+});
+
+test('promotion xp and promote', () => {
+  const s = E.newState();
+  s.pMult = 999; assert.equal(E.promoXp(s), 0); assert.ok(!E.canPromote(s, 0));
+  s.pMult = 16000; assert.equal(E.promoXp(s), 8);
+  assert.ok(E.promote(s, 1));
+  assert.deepEqual(s.promo, [0, 8, 0, 0]);
+  assert.equal(s.pMult, 1); assert.equal(s.stats.promotions, 1);
+  s.pMult = 16000; assert.ok(!E.canPromote(s, 1)); assert.ok(E.canPromote(s, 0));
+});
+
+test('infinity', () => {
+  const s = E.newState(); s.promo = [3, 3, 3, 3]; s.pMult = 1e6;
+  s.scoreLog = 308; assert.ok(!E.canInfinity(s));
+  s.scoreLog = 308.3; assert.ok(E.canInfinity(s));
+  E.goInfinite(s);
+  assert.equal(s.ip, 1); assert.equal(s.infinities, 1);
+  assert.deepEqual(s.promo, [0, 0, 0, 0]); assert.equal(s.pMult, 1);
+});
+
+test('serialize round trip incl -Infinity', () => {
+  const s = E.newState(); s.circles[0].multLog = 3.5; s.promo = [1, 2, 3, 4];
+  const t = E.deserialize(E.serialize(s));
+  assert.deepEqual(t, s);
+  assert.throws(() => E.deserialize('garbage'), /Invalid save/);
+});

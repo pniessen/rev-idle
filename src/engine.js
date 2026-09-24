@@ -19,6 +19,15 @@ const Engine = (() => {
 
   const INFINITY_LOG = Math.log10(1.79e308);
 
+  const TUNE = {
+    pMultBase: 2.56,
+    pMultPow: 2.25,
+    pExpDiv: 225,
+    prestigeMinLog: 10,
+    promoMin: 1000,
+    promoPow: 0.75,
+  };
+
   // --- log-space helpers ---
 
   function logAdd(a, b) {
@@ -104,6 +113,7 @@ const Engine = (() => {
 
   function buy(s, i, n) {
     const c = s.circles[i];
+    if (!c.unlocked) return 0;
     const cap = levelCap(c);
     const unlimited = n === 'max';
     let count = 0;
@@ -183,6 +193,120 @@ const Engine = (() => {
     return { scoreLogBefore, scoreLogAfter: s.scoreLog };
   }
 
+  // --- reset helper ---
+
+  function resetRun(s) {
+    s.scoreLog = -Infinity;
+    s.circles = CIRCLES.map((_, i) => freshCircle(i));
+  }
+
+  // --- ascension ---
+
+  function canAscend(s, i) {
+    const c = s.circles[i];
+    return c.unlocked && c.level >= levelCap(c);
+  }
+
+  function ascend(s, i) {
+    if (!canAscend(s, i)) return false;
+    const c = s.circles[i];
+    const p3 = promoEffects(s).p3;
+    c.level = 5;
+    c.ascensions++;
+    c.multGainLog += Math.log10(p3);
+    return true;
+  }
+
+  // --- prestige ---
+
+  function pendingPrestige(s) {
+    if (s.scoreLog < 3) return { pMult: 1, pExp: 1 };
+    const pMult = TUNE.pMultBase * (s.scoreLog - 3) ** TUNE.pMultPow;
+    const pExp = 1 + Math.max(0, s.scoreLog - 5) / TUNE.pExpDiv;
+    return { pMult, pExp };
+  }
+
+  function canPrestige(s) {
+    return s.scoreLog >= Math.max(TUNE.prestigeMinLog, s.prestigeReqLog);
+  }
+
+  function prestige(s) {
+    if (!canPrestige(s)) return false;
+    const g = pendingPrestige(s);
+    s.pMult = Math.max(s.pMult, g.pMult);
+    s.pExp = Math.max(s.pExp, g.pExp);
+    s.prestigeReqLog = s.scoreLog;
+    s.stats.prestiges++;
+    resetRun(s);
+    return true;
+  }
+
+  // --- promotions ---
+
+  function promoXp(s) {
+    const pending = canPrestige(s) ? pendingPrestige(s).pMult : 0;
+    const m = Math.max(s.pMult, pending);
+    if (m < TUNE.promoMin) return 0;
+    return Math.floor((m / TUNE.promoMin) ** TUNE.promoPow);
+  }
+
+  function canPromote(s, k) {
+    return promoXp(s) > s.promo[k];
+  }
+
+  function promote(s, k) {
+    if (!canPromote(s, k)) return false;
+    const xp = promoXp(s);
+    s.promo[k] = xp;
+    resetRun(s);
+    s.pMult = 1;
+    s.pExp = 1;
+    s.prestigeReqLog = 10;
+    s.stats.promotions++;
+    return true;
+  }
+
+  // --- infinity ---
+
+  function canInfinity(s) {
+    return s.scoreLog >= INFINITY_LOG;
+  }
+
+  function goInfinite(s) {
+    if (!canInfinity(s)) return false;
+    const stats = s.stats;
+    const ip = s.ip + 1;
+    const infinities = s.infinities + 1;
+    Object.assign(s, newState());
+    s.stats = stats;
+    s.ip = ip;
+    s.infinities = infinities;
+    return true;
+  }
+
+  // --- serialize ---
+
+  function serialize(s) {
+    const json = JSON.stringify(s, (k, v) => (v === -Infinity ? '-inf' : v));
+    if (typeof btoa === 'function') return btoa(json);
+    return Buffer.from(json, 'utf-8').toString('base64');
+  }
+
+  function deserialize(str) {
+    try {
+      const json = typeof atob === 'function'
+        ? atob(str)
+        : Buffer.from(str, 'base64').toString('utf-8');
+      const obj = JSON.parse(json, (k, v) => (v === '-inf' ? -Infinity : v));
+      if (!obj || obj.v !== 1 || !Array.isArray(obj.circles) || obj.circles.length !== 10) {
+        throw new Error('Invalid save');
+      }
+      return Object.assign(newState(), obj);
+    } catch (e) {
+      throw new Error('Invalid save');
+    }
+  }
+
   function fmtLog(x) {
     if (x === -Infinity) return '0';
     if (x < 6) {
@@ -202,6 +326,7 @@ const Engine = (() => {
   return {
     CIRCLES,
     INFINITY_LOG,
+    TUNE,
     newState,
     tick,
     simulate,
@@ -211,6 +336,18 @@ const Engine = (() => {
     levelCap,
     costLog,
     buy,
+    canAscend,
+    ascend,
+    pendingPrestige,
+    canPrestige,
+    prestige,
+    promoXp,
+    canPromote,
+    promote,
+    canInfinity,
+    goInfinite,
+    serialize,
+    deserialize,
     promoEffects,
     fmtLog,
     logAdd,
