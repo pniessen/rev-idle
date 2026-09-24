@@ -64,6 +64,8 @@
   // ---------- header ----------
 
   function ipLineText(state) {
+    // At the IP cap (the finale) further gains are clamped away: no "+X next".
+    if (state.inf.ipLog >= Engine.INFINITY_LOG) return 'IP ' + fmt(state.inf.ipLog);
     return 'IP ' + fmt(state.inf.ipLog) + ' · +' + fmt(Engine.ipGainLog(state)) + ' next';
   }
 

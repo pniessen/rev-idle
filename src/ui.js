@@ -180,14 +180,20 @@
 
   function showOfflineModal(info) {
     modalOpen = 'offline';
-    var gainLog = info.before === -Infinity ? info.after : Engine.logSub(info.after, info.before);
+    // The run may have been reset while away (prestige/promote/Infinity), so
+    // the end score can be lower than the start: logSub needs after > before
+    // (it returns NaN otherwise), so only a real gain is shown as one.
+    var gained = info.after > info.before;
+    var scoreLine = gained
+      ? ['Score gained', fmt(info.before === -Infinity ? info.after : Engine.logSub(info.after, info.before))]
+      : ['Score now', fmt(info.after)];
     var lines = [
       el('p', { class: 'help' }, [
         'You were gone for ' + fmtTime(info.seconds) + '.',
       ]),
       el('p', { class: 'stat-line' }, [
-        el('span', { class: 'label' }, ['Score gained']),
-        el('span', {}, [fmt(gainLog)]),
+        el('span', { class: 'label' }, [scoreLine[0]]),
+        el('span', {}, [scoreLine[1]]),
       ]),
     ];
     if (info.ipGainedLog !== undefined && info.ipGainedLog !== -Infinity) {
@@ -214,11 +220,13 @@
     showModal(panel);
   }
 
+  // Closes the Infinity modal even when goInfinite refuses (the score is no
+  // longer at the cap), so its button can never be a dead end.
   function doGoInfinite() {
-    if (Engine.goInfinite(state)) {
-      hideModal();
-      markDirty();
-    }
+    var ok = Engine.goInfinite(state);
+    if (!ok && !Engine.canInfinity(state)) state.inf.pendingConfirm = false;
+    if (modalOpen === 'infinity') hideModal();
+    if (ok) markDirty();
   }
 
   function showInfinityModal() {
@@ -334,7 +342,7 @@
       }, ['IC ' + state.inf.ic.active]));
     }
     if (state.infinities > 0) {
-      frag.appendChild(el('span', { class: 'chip grey' }, ['\u221E ' + state.infinities]));
+      frag.appendChild(el('span', { class: 'chip grey' }, ['\u221E ' + fmtInf(state.infinities)]));
     }
     els.multbarChips.innerHTML = '';
     els.multbarChips.appendChild(frag);
@@ -863,7 +871,7 @@
       try {
         var loaded = Engine.deserialize(importArea.value.trim());
         state = loaded;
-        lastKnownInfinities = state.infinities;
+        syncKnown();
         importErr.textContent = '';
         markDirty();
         toast('Save loaded');
@@ -881,7 +889,7 @@
     twoStepConfirm(resetBtn, 'Hard reset', 'Confirm reset?', function () {
       if (catchingUp) { toast('Catching up…'); return; }
       state = Engine.newState();
-      lastKnownInfinities = state.infinities;
+      syncKnown();
       try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ }
       markDirty();
       toast('Progress reset');
@@ -985,13 +993,35 @@
 
   // ---------- infinity check ----------
 
-  var lastKnownInfinities = 0;
+  // Real Infinities are detected by the stats.lastInfinities entry
+  // goInfinite pushes (a new object each time), not by the Infinity count,
+  // which passive Infinities (18;1) raise fractionally every tick. IC
+  // completions are detected by diffing ic.done. syncKnown() adopts the
+  // current state without toasting (boot, import, reset, catch-up — the
+  // offline summary lists what happened while away).
+  var lastKnownInfEntry = null;
+  var lastKnownIcDone = [];
 
+  function lastInfEntry() {
+    var h = state.stats.lastInfinities;
+    return h.length ? h[h.length - 1] : null;
+  }
+
+  function syncKnown() {
+    lastKnownInfEntry = lastInfEntry();
+    lastKnownIcDone = state.inf.ic.done.slice();
+  }
+
+  // The modal is shown only while an Infinity can actually be confirmed; if
+  // that stops being true (the score dropped below the cap) it is closed.
   function checkInfinity() {
     var can = Engine.canInfinity(state);
     if (els.infinityBtn) els.infinityBtn.style.display = can ? '' : 'none';
-    if (state.inf.pendingConfirm && !modalOpen) {
+    var pending = state.inf.pendingConfirm && can;
+    if (pending && !modalOpen) {
       showInfinityModal();
+    } else if (!pending && modalOpen === 'infinity') {
+      hideModal();
     }
   }
 
@@ -1002,13 +1032,17 @@
   // brief specifies.
   function checkInfinityToast() {
     if (modalOpen) return;
-    if (state.infinities > lastKnownInfinities) {
-      var last = state.stats.lastInfinities[state.stats.lastInfinities.length - 1];
-      if (last) {
-        toast('Infinity! +' + fmt(last.ipGainLog) + ' IP (∞ ' + fmtInf(state.infinities) + ')');
-      }
+    var msgs = [];
+    var last = lastInfEntry();
+    if (last && last !== lastKnownInfEntry) {
+      msgs.push('Infinity! +' + fmt(last.ipGainLog) + ' IP (∞ ' + fmtInf(state.infinities) + ')');
     }
-    lastKnownInfinities = state.infinities;
+    var done = state.inf.ic.done;
+    for (var i = 0; i < done.length; i++) {
+      if (done[i] && !lastKnownIcDone[i]) msgs.push('Challenge ' + (i + 1) + ' completed');
+    }
+    if (msgs.length) toast(msgs.join(' \u00B7 '));
+    syncKnown();
   }
 
   function updateIcCanvasBanner() {
@@ -1081,6 +1115,10 @@
       cancelAnimationFrame(rafId);
       rafId = null;
     }
+    // The overlay borrows the modal slot; whatever modal was open (Infinity,
+    // finale, intro, an unread offline summary) is put back afterwards
+    // instead of being silently closed.
+    var prevModal = modalOpen && els.modal.firstChild ? { kind: modalOpen, node: els.modal.firstChild } : null;
     showCatchupOverlay();
 
     var total = seconds;
@@ -1130,10 +1168,14 @@
       catchingUp = false;
       catchupCheckpointMs = null;
       hideModal();
+      if (prevModal) {
+        showModal(prevModal.node);
+        modalOpen = prevModal.kind;
+      }
       state.savedAt = Date.now();
       save();
       markDirty();
-      lastKnownInfinities = state.infinities;
+      syncKnown();
       var icCompleted = Object.keys(icSeen).map(Number).sort(function (a, b) { return a - b; });
       lastFrame = 0;
       rafId = requestAnimationFrame(frame);
@@ -1177,6 +1219,15 @@
     }
   }
 
+  // An offline summary never replaces an open modal: it waits until the
+  // modal is closed and is shown on the next DOM update.
+  var queuedOffline = null;
+
+  function showOrQueueOfflineModal(info) {
+    if (modalOpen) queuedOffline = info;
+    else showOfflineModal(info);
+  }
+
   function domUpdate() {
     updateScorebox();
     renderMultbar();
@@ -1187,6 +1238,11 @@
       dirty = false;
     } else {
       updateActiveTabBody();
+    }
+    if (queuedOffline && !modalOpen) {
+      var q = queuedOffline;
+      queuedOffline = null;
+      showOfflineModal(q);
     }
     checkInfinity();
     checkInfinityToast();
@@ -1290,12 +1346,17 @@
         }
       } else {
         var hiddenSec = Math.min((Date.now() - state.savedAt) / 1000, OFFLINE_CAP_SEC);
-        if (hiddenSec > 0 && !catchingUp) {
-          runCatchup(hiddenSec, function (info) {
-            if (hiddenSec > 10 && !modalOpen) {
-              showOfflineModal(info);
-            }
-          });
+        if (catchingUp || hiddenSec < 1) {
+          // Under a second (a quick tab flick): nothing worth catching up.
+        } else if (hiddenSec <= 10) {
+          // A short hide is simulated in one go without the overlay, so it
+          // never flashes over (or closes) an open modal; no summary.
+          Engine.simulate(state, hiddenSec);
+          state.savedAt = Date.now();
+          save();
+          markDirty();
+        } else {
+          runCatchup(hiddenSec, showOrQueueOfflineModal);
         }
         // Reset the frame clock so the next rAF frame doesn't see a huge dt
         // (which frame() clamps to 0.25s anyway) on top of the time we just
@@ -1315,12 +1376,12 @@
     lastFrame = 0;
     lastDomUpdate = 0;
     lastAutosave = performance.now();
-    lastKnownInfinities = state.infinities;
+    syncKnown();
 
     if (offlineInfo && offlineInfo.seconds > 0) {
       // runCatchup pauses/resumes the rAF loop itself and calls save() once
       // catch-up finishes, so the loop is intentionally not started here.
-      runCatchup(offlineInfo.seconds, showOfflineModal);
+      runCatchup(offlineInfo.seconds, showOrQueueOfflineModal);
     } else {
       if (Help) Help.maybeShowIntroOnBoot(hadSave);
       rafId = requestAnimationFrame(frame);

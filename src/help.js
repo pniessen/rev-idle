@@ -258,8 +258,10 @@
     breakToggle: function (s) {
       var T = Engine.TUNE;
       return 'Broken: score can pass ' + fmt(Engine.INFINITY_LOG) + ' and you choose when to go Infinite. Every e'
-        + T.breakStepLog + ' past e' + T.breakStartLog.toLocaleString('en-US') + ' multiplies IP ×10. Fixed: you go Infinite automatically at '
-        + fmt(Engine.INFINITY_LOG) + '.';
+        + T.breakStepLog + ' past e' + T.breakStartLog.toLocaleString('en-US') + ' multiplies IP ×10. Fixed: '
+        + (s.inf.auto.confirmInfinity
+          ? 'score stops at ' + fmt(Engine.INFINITY_LOG) + ' and you confirm each Infinity ("Confirm each Infinity" is on).'
+          : 'you go Infinite automatically at ' + fmt(Engine.INFINITY_LOG) + '.');
     },
     ipBar: function (s) {
       var T = Engine.TUNE;
