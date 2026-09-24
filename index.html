@@ -4228,7 +4228,7 @@ if (typeof module !== 'undefined' && module.exports) {
     },
     allIC: {
       title: 'Complete all 9 Challenges',
-      why: 'Each one is harder than the last. Beating all nine unlocks Break Infinity.',
+      why: 'Each one is harder than the last. Beating all nine unlocks the next stage.',
       topic: 'challenges',
     },
     breakInf: {
@@ -4282,7 +4282,7 @@ if (typeof module !== 'undefined' && module.exports) {
       summary: 'How rings move, and what makes them faster.',
       how: [
         'Each of the ten coloured circles is a ring. A dot orbits it; one full trip around is a lap.',
-        'A ring’s level sets its speed: laps per second = level × the ring’s base speed × speed boosts.',
+        'A ring’s level sets its speed: laps per second = level × the ring’s base speed × speed bonuses from later features.',
         'Outer rings are slower and cost more, but each one brings its own multiplier.',
       ],
       todo: [
@@ -4294,7 +4294,7 @@ if (typeof module !== 'undefined' && module.exports) {
       summary: 'Multipliers decide how much score each lap pays.',
       how: [
         'Each ring’s ×mult starts at ×1 and grows every lap.',
-        'Score per lap = (product of ring multipliers × P.Mult) ^ exponent. P.Mult is a bonus multiplier and the exponent is a power; both start at 1 and later resets raise them.',
+        'Score per lap = (product of ring multipliers × P.Mult) ^ exponent. Every lap of any ring earns this.',
         'Income = score per lap × laps per second, summed over all rings.',
       ],
       todo: [
@@ -4410,7 +4410,7 @@ if (typeof module !== 'undefined' && module.exports) {
     },
     {
       id: 'challenges', group: 'infinity', title: 'Infinity Challenges', unlock: 'automate',
-      summary: 'A run under a handicap, done nine times over, each harder than the last.',
+      summary: 'Nine runs, each with its own handicap; reach {INF} score under one to beat it and earn a permanent reward.',
       how: [
         'The Challenges! upgrade unlocks them on ∞ → ICs. They must be beaten in order.',
         'Starting or leaving a Challenge resets your run without paying IP.',
@@ -4576,7 +4576,7 @@ if (typeof module !== 'undefined' && module.exports) {
     icSeen: {
       title: 'Infinity Challenges unlocked',
       what: 'Nine Challenges each add a handicap. Reach {INF} score while one is on to complete it.',
-      why: 'Each one gives a permanent reward and more IP per Infinity. All nine unlock Break Infinity.',
+      why: 'Each one gives a permanent reward and more IP per Infinity. All nine unlock the next stage.',
       todo: 'Open ∞ → ICs and start Challenge 1.',
       goal: 'firstIC',
       topic: 'challenges',
@@ -4605,12 +4605,12 @@ if (typeof module !== 'undefined' && module.exports) {
     { term: 'Ring', unlock: null, def: 'One of the ten coloured circles, Red to White. Each has a dot that orbits it.' },
     { term: 'Lap', unlock: null, def: 'One full trip of a ring’s dot around its circle. Every lap earns score.' },
     { term: 'Score', unlock: null, def: 'What rings earn. You spend it on levels, and reaching score milestones unlocks resets.' },
-    { term: 'Level', unlock: null, def: 'How fast a ring spins. Laps per second = level × the ring’s base speed × speed boosts.' },
+    { term: 'Level', unlock: null, def: 'How fast a ring spins. Laps per second = level × the ring’s base speed × speed bonuses from later features.' },
     { term: 'Level cap', unlock: 'unlockOrange', def: 'The highest level a ring can reach ({CAP} for Red right now). Ascending raises it.' },
     { term: 'Laps per second', unlock: null, def: 'How often a ring completes a lap. Your income adds these up across all rings.' },
     { term: 'Multiplier', unlock: null, def: 'Each ring’s ×mult. It starts at ×1 and grows every time that ring laps. All ring multipliers multiply together.' },
     { term: 'Mult gain', unlock: null, def: 'How much a ring’s multiplier grows per lap. Later features raise it.' },
-    { term: 'Score per lap', unlock: null, def: '(All ring multipliers multiplied together × P.Mult) ^ exponent. P.Mult is a bonus multiplier and the exponent is a power; both start at 1 and later resets raise them.' },
+    { term: 'Score per lap', unlock: null, def: '(All ring multipliers multiplied together × P.Mult) ^ exponent. Every lap of any ring earns this.' },
     { term: 'Income', unlock: null, def: 'Score per second: score per lap × laps per second across all rings.' },
     { term: 'Bulk buy', unlock: null, def: 'The ×1 / ×10 / Max switch (key M). Max buys as many levels as you can afford.' },
     { term: 'Run', unlock: null, def: 'Your progress since the last reset. Each reset starts a new run.' },
@@ -4622,6 +4622,7 @@ if (typeof module !== 'undefined' && module.exports) {
     { term: 'Exponent', unlock: null, def: 'The power score per lap is raised to. It starts at 1; later resets and upgrades raise it.' },
     { term: 'Promotion', unlock: 'unlockWhite', def: 'One of four boosts (Mult Gain, Lap Speed, Ascension Power, Promotion Power). Promoting resets P.Mult.' },
     { term: 'Promotion XP', unlock: 'unlockWhite', def: 'Earned once P.Mult reaches ×{PROMO_MIN}. Promoting sets one Promotion’s level to your XP.' },
+    { term: 'Revolution', unlock: null, def: 'The first stage of the game: rings, levels, multipliers and the resets you unlock before Infinity.' },
     { term: 'Infinity', unlock: 'reachPromote', def: 'The score limit, {INF}. Going Infinite resets the Revolution stage for IP.' },
     { term: 'Infinity Points (IP)', unlock: 'reachPromote', def: 'Earned each time your score reaches Infinity; spent on permanent Infinity Upgrades.' },
     { term: 'Infinities (∞)', unlock: 'reachPromote', def: 'How many times you have gone Infinite. Several upgrades grow stronger with more.' },
