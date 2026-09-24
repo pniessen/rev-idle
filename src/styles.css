@@ -1044,6 +1044,54 @@ textarea.save-area {
   margin-top: 8px;
 }
 
+/* ---------- guide: right side sheet (desktop, >= 820px) ---------- */
+
+/* A light scrim rather than the usual dark backdrop — the game stays
+   visible to the left. Only ever set while the guide panel itself opens as
+   a sheet (see openGuide/closeGuideModal); every other modal keeps the
+   default centered #modal styling. */
+#modal.modal-sheet-open {
+  background: rgba(4, 3, 8, 0.35);
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+}
+
+.guide-panel.guide-panel-sheet {
+  max-width: none;
+  width: clamp(420px, 32vw, 460px);
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+  border-radius: 0;
+  border-width: 0 0 0 1px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  padding-top: calc(24px + env(safe-area-inset-top));
+  padding-right: calc(24px + env(safe-area-inset-right));
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  animation: guide-sheet-in 0.22s ease;
+}
+
+.guide-panel.guide-panel-sheet .guide-panel-head { flex: none; }
+
+.guide-panel.guide-panel-sheet .guide-panel-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+@keyframes guide-sheet-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-panel.guide-panel-sheet { animation: none; }
+}
+
 .guide-glossary dd {
   margin: 2px 0 0;
   color: var(--muted);

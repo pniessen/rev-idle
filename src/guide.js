@@ -8,6 +8,10 @@
   var STORAGE_KEY = 'revidle.guide.v1';
   var STRONG_PULSE_MS = 3000;
   var COACH_RETRY_MS = 220;
+  // The ? guide opens as a right-hand side sheet at this width and up
+  // (matching the app's own layout breakpoint, see isCardCollapsed()); below
+  // it, it stays the centered modal.
+  var GUIDE_SHEET_BREAKPOINT = 820;
 
   var GuideGoals = window.GuideGoals;
   var GuideContent = window.GuideContent;
@@ -93,14 +97,20 @@
     );
   }
 
-  // Moves focus into `container` (first focusable), traps Tab/Shift+Tab
-  // inside it, and returns a release() that restores the focus the page had
-  // before the container opened. Callers keep the release function and call
-  // it exactly once, when the container closes.
-  function trapFocus(container) {
+  // Moves focus into `container` (first focusable, or `preferredFocus` when
+  // given — e.g. the primary action rather than whatever happens to be
+  // first in DOM order), traps Tab/Shift+Tab inside it, and returns a
+  // release() that restores the focus the page had before the container
+  // opened. Callers keep the release function and call it exactly once,
+  // when the container closes.
+  function trapFocus(container, preferredFocus) {
     var previouslyFocused = document.activeElement;
-    var list = focusableIn(container);
-    if (list.length) list[0].focus();
+    if (preferredFocus && typeof preferredFocus.focus === 'function') {
+      preferredFocus.focus();
+    } else {
+      var list = focusableIn(container);
+      if (list.length) list[0].focus();
+    }
     function onKeydown(e) {
       if (e.key !== 'Tab') return;
       var f = focusableIn(container);
@@ -129,8 +139,27 @@
   // at a time, since hooks.isModalOpen() gates opening a second one).
   var releaseModalFocus = null;
 
+  function isDesktopSheetWidth() {
+    try { return window.innerWidth >= GUIDE_SHEET_BREAKPOINT; } catch (e) { return false; }
+  }
+
+  // The #modal backdrop container, reached directly (Guide already touches
+  // `document` elsewhere — spotlight overlay, keydown/visibilitychange —
+  // rather than through hooks, which only cover showModal/hideModal
+  // themselves). May be null in tests that don't build the full page.
+  function modalBackdropEl() {
+    return document.getElementById('modal');
+  }
+
   function closeGuideModal() {
     hooks.hideModal();
+    // Only the full guide panel ever sets this (see openGuide); clearing it
+    // unconditionally on every Guide-owned modal close keeps it from
+    // leaking onto the next, unrelated modal (offline/infinity/finale use
+    // hooks.hideModal's underlying implementation directly, never this
+    // class).
+    var backdrop = modalBackdropEl();
+    if (backdrop) backdrop.classList.remove('modal-sheet-open');
     if (releaseModalFocus) {
       var r = releaseModalFocus;
       releaseModalFocus = null;
@@ -524,11 +553,20 @@
     }, ['Replay intro']));
 
     var closeBtn = el('button', { class: 'btn guide-panel-close', 'aria-label': 'Close guide', onclick: closeGuideModal }, ['×']);
-    var panel = el('div', { class: 'modal-panel guide-panel', role: 'dialog', 'aria-label': 'How to play' }, [
+    // >= GUIDE_SHEET_BREAKPOINT: right-hand side sheet (spec §4). Below it:
+    // the existing centered modal, unchanged.
+    var sheet = isDesktopSheetWidth();
+    var panel = el('div', {
+      class: 'modal-panel guide-panel' + (sheet ? ' guide-panel-sheet' : ''),
+      role: 'dialog',
+      'aria-label': 'How to play',
+    }, [
       el('div', { class: 'guide-panel-head' }, [el('h2', { class: 'modal-title' }, ['Guide']), closeBtn]),
       body,
     ]);
     hooks.showModal(panel);
+    var backdrop = modalBackdropEl();
+    if (backdrop) backdrop.classList.toggle('modal-sheet-open', sheet);
     releaseModalFocus = trapFocus(panel);
     if (sectionId) {
       setTimeout(function () { scrollToSection(sectionId); }, 0);
@@ -709,40 +747,51 @@
     hideSpotlight();
     spotlightGoalId = goal.id;
     var content = GuideContent.goals[goal.id];
+    var titleText = fill(content.title, state);
     var popKids = [
-      el('div', { class: 'guide-spotlight-title' }, [fill(content.title, state)]),
+      el('div', { class: 'guide-spotlight-title' }, [titleText]),
       el('div', { class: 'guide-spotlight-text' }, [fill(content.coach, state)]),
     ];
+    // The primary action, when there is one — kept so we can focus it
+    // explicitly below, rather than relying on it merely being first in
+    // DOM order.
+    var primaryBtn = null;
     if (replayGoals) {
       // Replaying: walk every coach step for teaching purposes only, so
       // even an action step advances on "Next" rather than waiting for
       // done(state) — which, for an advanced player, may already be true
       // or may never become true again (e.g. buyRed once bought).
-      popKids.push(el('div', { class: 'row' }, [
-        el('button', { class: 'btn primary', onclick: replayNext }, ['Next']),
-      ]));
+      primaryBtn = el('button', { class: 'btn primary', onclick: replayNext }, ['Next']);
+      popKids.push(el('div', { class: 'row' }, [primaryBtn]));
     } else if (goal.ack) {
-      popKids.push(el('div', { class: 'row' }, [
-        el('button', { class: 'btn primary', onclick: function () { ackGoal(goal.id); } }, ['Next']),
-      ]));
+      primaryBtn = el('button', { class: 'btn primary', onclick: function () { ackGoal(goal.id); } }, ['Next']);
+      popKids.push(el('div', { class: 'row' }, [primaryBtn]));
     } else {
       popKids.push(el('div', { class: 'help guide-spotlight-hint' }, ['Do it to continue']));
     }
+    // Skip tutorial is always the last control in tab order, and never the
+    // one that gets initial focus (see trapFocus call below) — an
+    // accidental Enter/Space on popover open must never skip the tutorial.
     popKids.push(el('button', {
       class: 'btn guide-skip-tutorial',
       onclick: skipTutorial,
     }, ['Skip tutorial']));
 
     // aria-hidden lives on the dim/cutout layer only — the popover is the
-    // actual dialog and must stay reachable to assistive tech.
-    var pop = el('div', { class: 'guide-spotlight-pop', role: 'dialog', 'aria-label': 'Tutorial step' }, popKids);
+    // actual dialog and must stay reachable to assistive tech. tabindex=-1
+    // lets it take focus programmatically (action steps, below) without
+    // joining the Tab order itself.
+    var pop = el('div', { class: 'guide-spotlight-pop', role: 'dialog', tabindex: '-1', 'aria-label': titleText }, popKids);
     var overlay = el('div', { class: 'guide-spotlight-overlay' }, [
       el('div', { class: 'guide-spotlight-hole', 'aria-hidden': 'true' }),
       pop,
     ]);
     document.body.appendChild(overlay);
     spotlightEl = overlay;
-    releaseSpotlightFocus = trapFocus(pop);
+    // Ack/replay steps: focus the primary "Next" action. Action steps (no
+    // Next button) have nothing safe to focus but Skip, so focus the
+    // popover container itself instead.
+    releaseSpotlightFocus = trapFocus(pop, primaryBtn || pop);
 
     navigateToTarget(goal, function () {
       var nodes = findTargetEls(goal);
@@ -793,9 +842,33 @@
     if (document.hidden) hideSpotlight();
   });
 
+  // The guide side sheet's scrim: a click that lands on the backdrop
+  // itself (not one that bubbled up from the panel) closes the sheet.
+  // Inert for every other modal, since only openGuide's sheet path ever
+  // sets 'modal-sheet-open'.
+  document.addEventListener('click', function (e) {
+    var backdrop = modalBackdropEl();
+    if (!backdrop || backdrop.hidden) return;
+    if (!backdrop.classList.contains('modal-sheet-open')) return;
+    if (e.target === backdrop) closeGuideModal();
+  });
+
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape') return;
     if (spotlightGoalId) {
+      if (replayGoals) {
+        // Escaping a Restart-tutorial replay ends the replay cleanly, the
+        // same as finishing it (see replayNext) — dismissing only the
+        // current step would leave the replay stuck on it (currentCoachGoal
+        // keeps returning the same replay step, and runCoach's
+        // dismissedStepId check keeps suppressing it) until Restart is
+        // pressed again. Ending it drops straight back to the real current
+        // goal, since replay never touches store.done.
+        replayGoals = null;
+        tutorialActive = false;
+        hideSpotlight();
+        return;
+      }
       dismissedStepId = spotlightGoalId;
       hideSpotlight();
       return;
