@@ -40,8 +40,8 @@ This spec extends [2026-09-23-rev-idle-design.md](2026-09-23-rev-idle-design.md)
 | D15 | The layer ends at 1.79e308 IP. IP is capped there, and a one-time "Eternity — coming soon" finale modal is shown. Play continues. | Eternity is out of scope. The cap is faithful because in the real game you cannot pass it without Eternity. |
 | D16 | Time Flux, macros, the IP Adjuster, leaderboards and achievements are out of scope. | None of these are core to the loop. |
 | D17 | UI: one new main tab, **∞**, which appears after the first Infinity. It holds sub-tabs Tree · Gens · Auto · ICs · Stars, and each sub-tab appears once it is unlocked. | This keeps the main tab bar at 6 items on 400 px screens and leaves room for an Eternity layer switcher later. |
-| D18 | Offline progress runs automation and generators, and can perform any number of fixed or auto Infinities. It is simulated in 0.5 s chunks when any automation is on, and in 1 s chunks otherwise. The 8 h cap stays. | Otherwise idle play does not work. The chunk size trades accuracy against CPU (budget in §9). |
-| D19 | Pacing compresses the real game. IC4 and IC9 target ≤ 90 min each instead of "several hours". The whole layer targets ≤ 60 h of active-bot time (§10). | The whole layer should be finishable by a browser idle player. |
+| D18 | Offline progress runs automation and generators, and can perform any number of fixed or auto Infinities. It uses the same **adaptive step** as the sim (§9.1). The **8 h offline cap stays**. | Otherwise idle play does not work, and a shared step rule keeps the sim honest about offline play. The idle pacing profile (§12) has an 8 h night gap, so a player who checks in by the next morning loses nothing. A longer cap would mostly help players who skip days, which the 1–2 week target does not assume. |
+| D19 | Pacing follows the real game and is **mostly idle** (product owner, revised 2026-09-24). IC4 and IC9 take 3–6 h each; the other challenges take 30–90 min each. First Infinity to the IP-cap finale takes 7–14 days of game time under the idle check-in profile. All targets are in §12. | The layer is meant to be played over weeks, with automation and offline progress doing most of the work. |
 
 ---
 
@@ -386,12 +386,17 @@ starGpLog = exp · max(0, sdLog)                          // GP gain ×SD^exp  [
 
 ## 9. Offline progress, save format, engine API
 
-### 9.1 Offline and hidden tab
-- `simulate(s, seconds)` runs `tick` in chunks of `dt = anyAutoOn(s) ? 0.5 : 1`. `tick` itself advances generators, IC6 decay, 18;1 and Stardust, then calls `autoStep` and the fixed/auto Infinity checks. It returns:
+### 9.1 Offline, hidden tab and step size
+- `simulate(s, seconds, opts)` runs `tick` in steps of `adaptiveDt(s, opts)`. `tick` itself advances generators, IC6 decay, 18;1 and Stardust, then calls `autoStep` and the fixed/auto Infinity checks. It returns:
   ```
   { scoreLogBefore, scoreLogAfter, ipGainedLog, infinitiesGained, icCompleted: [n...] }
   ```
-- **Budget:** the 8 h cap is 57,600 chunks, which must run in under 1.5 s on a mid laptop (checked by a test with a timing guard of 3 s).
+- **Step rule:** `adaptiveDt(s, opts)` is:
+  ```
+  anyAutoOn(s) ? clamp(inf.tRun / TUNE.dtRunDiv, opts.dtMin ?? TUNE.dtMin, opts.dtMax ?? TUNE.dtMax) : TUNE.dtFixed
+  ```
+  Dynamics are fast right after a reset, so steps start fine and coarsen as the run matures. Without automation the step is 1 s, as shipped.
+- **UI offline and hidden-tab catch-up** call `simulate(s, sec, { dtMin: 0.5 })`. In the worst case that is 57,600 steps for 8 h, which must run in under 3 s (checked by a test).
 - The offline modal adds these lines: "+X IP", "+N Infinities" and "Challenge n completed".
 
 ### 9.2 State v2 (additions; v1 fields unchanged except `ip`)
@@ -452,7 +457,11 @@ starGpLog = exp · max(0, sdLog)                          // GP gain ×SD^exp  [
 | `starCostLog(s)`, `buyStar(s)`, `starBaseCostLog(s)`, `buyStarBase(s)`, `starExpCostLog(s)`, `buyStarExp(s)` | §7 |
 | `sdRateLog(s)`, `sdUpgCostLog(s, j)`, `canBuySdUpg(s, j)`, `buySdUpg(s, j)` | §7 |
 | `migrate(obj)` | §9.3 |
-| `anyAutoOn(s)` | chunk-size helper |
+| `anyAutoOn(s)`, `adaptiveDt(s, opts)` | step-size helpers (§9.1) |
+| `registerHooks(h)`, `DEFAULT_MODS` | core extension points used by the split engine files (see the implementation plan) |
+| `resetForChallenge(s)`, `icDoneCount(s)`, `upgReqMet(s, id)`, `genSoftcap(L)`, `gpExp(s)`, `starGpLog(s)`, `passiveInfRate(s)`, `ctf(s)`, `isStalled(s)` | helpers exposed for the UI, tooltips and tests |
+
+The engine is split across `src/engine.js` (core), `src/engine-infinity.js` and `src/engine-auto.js`. All three attach to the single `Engine` object. Stardust-upgrade indices `j` in the API are 0-based (`sdU[j]`).
 
 **Changed functions:**
 - `goInfinite` (§2.4)
@@ -536,10 +545,10 @@ These use the concurrent help system: a `data-tip` key with optional `data-tip-i
 |---|---|
 | `ipHeader` | Infinity Points — earned each time you go Infinite. Next Infinity gives +{ipGain} IP. Spend IP on the Tree, Generators and Stars. |
 | `infCount` | Infinities performed: {∞}. Several upgrades grow stronger with more Infinities. |
-| `iuCard` (id) | {name} — {effect text}. Cost {cost} IP. {Requires … / Owned — currently ×{value}}. |
+| `iuCard` (i = index into `Engine.UPGRADES`) | {name} — {effect text}. Cost {cost} IP. {Requires … / Owned — currently ×{value}}. |
 | `gpLine` | Generator Power multiplies every ring's mult gain per lap by GP^{gpExp}. It resets each Infinity, so runs speed up as they go. |
-| `genRow` (k) | G{k}: you have {amount} ({bought} bought). Each makes {mult} {G(k−1) or GP} per second. Every purchase doubles its output. |
-| `genBuy` (k) | Buy another G{k} for {cost} IP. Bought generators are kept through Infinity; produced ones are not. |
+| `genRow` (k, 0-based) | G{k}: you have {amount} ({bought} bought). Each makes {mult} {G(k−1) or GP} per second. Every purchase doubles its output. |
+| `genBuy` (k, 0-based) | Buy another G{k} for {cost} IP. Bought generators are kept through Infinity; produced ones are not. |
 | `autoBuy` | Autobuy: every moment, buys the cheapest affordable level among the rings you've enabled. |
 | `autoAsc` | Auto-Ascend: ascends enabled rings as soon as they hit their level cap. |
 | `autoPromote` | Auto-Promote: cycles through promotions in your order, promoting once XP reaches {×factor} your current level in the next one (or when progress stalls). |
@@ -554,7 +563,7 @@ These use the concurrent help system: a `data-tip` key with optional `data-tip-i
 | `starBase` | Star base {base} → {base+0.275}. Raises Stardust per Star. |
 | `starExp` | Stardust exponent {exp} → {exp+0.05}. Generator Power gain × Stardust^exp. |
 | `sdAmount` | Stardust {sd}. Resets on Infinity — spend it before you go Infinite. |
-| `sdUpg` (j) | {effect}. Level {n}/{max}. Cost {cost} Stardust. Kept through Infinity. |
+| `sdUpg` (j, 0-based) | {effect}. Level {n}/{max}. Cost {cost} Stardust. Kept through Infinity. |
 | `gpChip` | Generator Power boost to mult gain: ×{gpMult}. |
 | `icChip` | In Challenge {n}: {handicap}. |
 | `confirmInfinity` | Show a confirmation when you reach 1.79e308 instead of going Infinite automatically. |
@@ -586,50 +595,101 @@ These use the concurrent help system: a `data-tip` key with optional `data-tip-i
 | `starBaseCost`, `starExpCost`, `starExpMax` | [34,4], [35,5], 12 | [firstLog, stepLog] |
 | `sdUpgCost` | [[1,2],[1.30103,1],[1.69897,0.47712],[2,0.30103]] | [firstLog, stepLog] |
 | `autoBuyMaxPerStep` | 500 | CPU guard |
-| `offlineDtAuto`, `offlineDt` | 0.5, 1 | D18 |
+| `ic4Pow` | 0.4 | [W] IC4 gain power (last-resort lever) |
+| `breakStartLog`, `breakStepLog` | 2772, 308 | [W] IP bar (×10 at e3,080, then every e308) |
+| `starStep` | `[[0,3],[18,7],[30,'grow']]` | [W]/[R] star cost steps: 3 below index 18, 7 below 30, then `7 + (j−29)` |
+| `dtRunDiv`, `dtMin`, `dtMax`, `dtFixed` | 50, 0.1, 2, 1 | adaptive step (§9.1) |
 
 ---
 
-## 12. Pacing targets
+## 12. Pacing targets (revised: real-game-like, mostly idle)
 
-These are measured by the sim's active bot, which uses the engine's automation with default settings, scripted purchases, and `DT=0.1` (`DT=0.5` allowed in Phase C). Each target also has a floor, to catch collapse.
+### 12.1 Player profiles used for measurement
+- **Active:** used from the new game until all four automations are owned (about Infinity 8).
+  - The bot acts every tick. It performs any buy, ascend, prestige or promote whose automation is not owned yet, using the existing greedy rules.
+  - It spends IP right after each Infinity.
+  - Runs 2–8 are therefore measured active, which is how a real player plays early Infinity.
+- **Idle (from the first check-in after the 4th automation):**
+  - Engine automation runs all the time. So do fixed and auto Infinity.
+  - The "player" checks in every 3 h during a 16 h day, then there is an 8 h night gap. The night gap equals the offline cap, so no time is lost.
+  - At a check-in the bot does the following: spends IP and SD from the scripted list (§13), buys generators and stars, starts or re-runs challenges, and sets auto-infinity thresholds.
+  - Between check-ins nothing is bought. A challenge started at a check-in runs until it completes; normal runs then resume automatically, because `ic.active` resets on completion.
 
-| Milestone | Target | Floor |
+Game time equals wall time for a player on this schedule. "t∞" is game time since the first Infinity.
+
+### 12.2 Targets
+| Milestone | Target | Floor (collapse guard) |
 |---|---|---|
-| 1st Infinity (regression) | 3h22m ±10% | — |
-| 2nd Infinity run | 60–75 min | ≥ 30 min |
-| 3rd Infinity run | ≤ 55 min | ≥ 20 min |
-| All 4 automations owned (1;1, 2;2, 3;2, 4;1, 5;3 = 9 IP) | affordable after Infinity 7, i.e. from run 8 on | — |
-| Run length at Infinity 10 | ≤ 30 min | ≥ 8 min |
-| 7;1 bought (Challenges) | cumulative ≤ 10 h | ≥ 5 h |
-| Each of IC1–3, 5–8 | ≤ 45 min per attempt (including the IP farming before it) | — |
-| IC4, IC9 | ≤ 90 min per attempt | — |
-| All 9 ICs (Break unlocked) | cumulative ≤ 22 h | ≥ 12 h |
-| Normal fixed run at Break | ≤ 3 min | ≥ 20 s |
-| Col 17 (1e6 IP) | Break + ≤ 5 h | — |
-| First Star (2e33 IP) | Break + ≤ 15 h | — |
-| 1.79e308 IP (finale) | cumulative ≤ 60 h | ≥ 30 h |
+| 1st Infinity (active, regression) | 3h22m ±10% since new game | — |
+| 2nd Infinity run | 80–100 min | ≥ 50 min |
+| 3rd Infinity run | 50–70 min | ≥ 30 min |
+| Run length at Infinity 11 | 25–35 min | ≥ 15 min |
+| All 4 automations owned (9 IP) | by Infinity 8 | — |
+| 7;1 bought (Challenges) | t∞ 10–16 h | ≥ 8 h |
+| IC1, 2, 3, 5, 6, 7, 8 (each attempt, start → completion) | 30–90 min | ≥ 15 min |
+| IC4 and IC9 (each attempt) | 3–6 h | ≥ 2 h |
+| All 9 ICs → Break unlocked | t∞ 2–4 days (48–96 h) | ≥ 40 h |
+| Col 17 (1e6 IP) | Break + 1–2 days | ≥ Break + 16 h |
+| First Star (2e33 IP) | t∞ 5–8 days | ≥ 4 days |
+| **1.79e308 IP finale** | **t∞ 7–14 days (168–336 h)** | ≥ 6 days |
 
-Tuning order: `genRate`, then `ipBase`, then the per-upgrade [R] constants. Wiki [W] numbers are only changed if [R] tuning cannot hit a target, and any such deviation goes in the spec's deviation note, like the existing 0.04 mult gain.
+### 12.3 Calibration levers (in order of preference)
+| Milestone band | Primary levers | Last resort (deviation note required) |
+|---|---|---|
+| Runs 2–11 | `genRate`, `u51*`, `u52K`, `u62K` | — |
+| 7;1 timing | Phase A levers above | `ipBase` |
+| IC1–3, 5–8 | `ic1Boost`, `ic5Nerf`, `ic6Decay`, the generator strength implied by attempt gating | — |
+| IC4, IC9 | generator/upgrade strength at the guide's attempt point | `ic4Pow`, IC9 circle count |
+| Break → col 17 | `icRefSec`, `ctfMax`, `u161Pow` | `breakStartLog`, `breakStepLog` |
+| Col 17 → Star | `u171Pow`, 18;3, `u201Ref`, `u201Cap`, `passiveInfK` | generator cost table |
+| Star → finale | `starStep` growth, `starBaseCost`, `starExpCost`, `starExpMax`, `sdUpgCost` | `genSoftcapLog` |
+
+Wiki [W] numbers change only as a last resort. Any such change is recorded in a "Deviations" note in this spec, like the existing 0.04 mult gain.
 
 ---
 
 ## 13. Sim changes (`test/sim.js`)
 
-- **`MODE=first` (default).** This is today's single-run bot, which becomes the regression check.
-- **`MODE=layer`.** A multi-Infinity campaign with `HOURS` (default 80). The bot:
-  1. Before automation is owned, uses its existing greedy logic. Once an automation is owned, it enables it through `inf.auto` and lets `autoStep` act. The greedy logic is refactored to call the same engine rules.
-  2. Between Infinities, spends IP from a **scripted priority list**. This is the guide path: 1;1, 2;2, 3;1, 3;2, 4;1, 5;3, 5;2, 6;1, 6;2, 7;1, 8;3, 8;1, 8;2, G1, 9;2, G2, 9;1, 11;1, 11;2, 12;1, 13;1, 14;1, 14;2, 15;2, 16;1, 15;3, 15;4, 16;2, 16;3, 15;1, 17;3, 17;1, 18;3, 19;3, 19;1, 18;1, 20;1, 21;1, then stars and gens. It buys the next item when affordable; otherwise it buys the cheapest generator costing ≤ 10% of IP.
-  3. Challenges: attempts IC n as soon as the guide prerequisites are owned (IC1–2 right after 7;1; IC3 after col 8; IC4 after G2; IC5–6 right after; IC7 after col 13; IC8 after col 14; IC9 right after). It abandons an attempt after 3 h and retries after 3 more Infinities. It reports each attempt.
-  4. While broken, it uses auto-infinity with a rate rule: infinite when the IP gained per minute over the run has fallen below 90% of its peak. It also re-runs challenges once after Break to set their best times.
-  5. Stars: buys SD upgrades whenever affordable, in the order 1, 3, 2, 4 (guide). It buys Star, Base or Exponent, whichever is cheapest.
-- **Output:** a milestone table matching §12, plus per-Infinity lines (index, run time, IP gained, IP total, upgrades bought).
-- **`CHECK=1`:** exits non-zero if any target or floor is missed. This is run in CI or by hand before merging.
-- **`OFFLINE=1`:** replays the campaign with random 1–8 h `simulate` gaps. It asserts that milestones land within ±15% of the active timings, which checks that the offline chunk size is honest.
+- **`MODE=first` (default):** today's single-run active bot. It is the regression guard for the 1st Infinity.
+- **`MODE=layer`:** the idle profile of §12.1, from a fresh state through the finale, capped at `DAYS` (default 16).
+  1. **Automation.** Everything runs through the engine: `tick` → `autoStep` → fixed/auto Infinity. The bot never performs an action itself once the matching automation is owned. Before that (the Active profile), the existing greedy logic performs it every tick.
+  2. **Check-ins** follow the §12.1 schedule; in the Active profile, every Infinity counts as a check-in. At each one the bot:
+     - Spends IP down the **scripted list**, buying the next item whenever it is affordable: 1;1, 2;2, 3;2, 3;1, 4;1, 5;3, 5;2, 6;1, 6;2, 7;1, 8;3, 8;1, 8;2, G1, 9;2, G2, 9;1, 11;1, 11;2, 12;1, 13;1, 14;1, 14;2, 15;2, 16;1, 15;3, 15;4, 16;2, 16;3, 15;1, 17;3, 17;1, 18;3, 19;3, 19;1, 18;1, 20;1, 21;1, then stars and generators.
+     - When the next list item is not affordable, buys the cheapest generator costing ≤ 10% of current IP.
+  3. **Challenges** are started at check-ins, only when no challenge is active and the guide's gate is met:
+     - IC1 and IC2 right after 7;1.
+     - IC3 after column 8.
+     - IC4 after the first G2.
+     - IC5 and IC6 right after.
+     - IC7 after column 13.
+     - IC8 after column 14.
+     - IC9 right after.
+
+     An attempt still running after 8 h is abandoned with `exitChallenge` and retried 4 check-ins later. Every attempt is logged. After Break, each IC is re-run once per day, at the first check-in of the day, to lower its best time.
+  4. **Break mode.** At the first check-in after Break, the bot breaks Infinity and turns on auto-infinity (15;1).
+     - At each later check-in it sets `minIpLog` to the IP gain the previous run reached at the moment its IP-per-minute peaked.
+     - Before 15;1 is owned, it goes Infinite at check-ins only.
+  5. **Stars.** At each check-in the bot buys Stardust upgrades while affordable, in the guide order 1, 3, 2, 4. Then it buys whichever of Star, Base and Exponent is cheapest.
+- **Step size:** the engine's `adaptiveDt` with `dtMin 0.1` and `dtMax 2`.
+- **Wall-time budget:** a full `MODE=layer CHECK=1` run must finish in ≤ 5 min on a laptop. Three strategies achieve this:
+  1. **Adaptive dt** (above). Most game time is spent late in runs, at 2 s steps.
+  2. **Macro-steps (event skipping) for repeated runs.**
+     - **Trigger:** no check-in purchase happened, no challenge is active, and the last 5 Infinities had run times within 2% of each other and identical `ipGainLog`.
+     - **Action:** the sim extrapolates `k` whole runs at once. It adds `k × runTime` to the clock, `k × ipGain` to IP, `k × infGain` to ∞, and updates the stats (count, fastest, last 10, total IP). State after an Infinity is a run start, so this is exact apart from ∞-dependent effects.
+     - **Choosing k:** `k` is the smallest of: the runs until the next check-in, the runs until the next scripted purchase becomes affordable, and 1000. `k` is halved until recomputing `ipGainLog` and `genMultLog(s, 0)` at `∞ + k·infGain` drifts less than 5%.
+     - `NOSKIP=1` disables macro-steps. `CHECK=1` also replays the Phase B window (7;1 → Break) with `NOSKIP=1` and requires milestone agreement within ±10%.
+  3. **Snapshots.** At each phase boundary (7;1 bought, Break, first Star) the sim writes the serialized state to `.sim/<name>.json` (gitignored). `FROM=<name>` resumes from a snapshot, so each phase can be tuned in ≤ 2 min.
+- **Output:**
+  - A milestone table: game time, t∞ and calendar day for each §12.2 row, with PASS/FAIL against target and floor.
+  - Every challenge attempt.
+  - The macro-step count and wall time per phase.
+  - `VERBOSE=1` adds a line per Infinity.
+- **`CHECK=1`** exits non-zero on any FAIL or when the wall budget is exceeded.
+- **`OFFLINE=1`** replays with each night gap as a single `simulate(s, 8h, { dtMin: 0.5 })` call, the way the UI does it. Milestones must land within ±15% of the stepped run.
 
 ---
 
-## 14. Testing (`test/engine.test.js`, `node:test`)
+## 14. Testing (`test/engine.test.js`, `test/infinity.test.js`, `node:test`)
 
 1. **Regression.** With default mods, `promoEffects`, `perRevLog`, `pendingPrestige`, `promoXp` and `lapsPerSec` equal the shipped formulas on sampled states. Existing tests keep passing.
 2. **Migration.**
@@ -646,8 +706,8 @@ Tuning order: `genRate`, then `ipBase`, then the per-upgrade [R] constants. Wiki
 6. **Challenges.** Each handicap is checked in isolation (e.g. IC8: `canAscend` is false; IC9: circle 4 never unlocks). Completion sets done/best and pays IP. Exit resets without IP. Challenges ignore the Break toggle.
 7. **Automation.** `autoStep` decisions on constructed states: autobuy picks the cheapest level; prestige fires on the ratio and exponent thresholds and on a stall; promote follows the order and `xFactor` and skips disabled promotions; auto-infinity respects its minimums.
 8. **Offline.**
-   - `simulate(s, 3600)` with automation versus 36,000 active 0.1 s ticks: IP and ∞ equal, score within 1 decade.
-   - An 8 h simulate completes in under 3 s.
+   - `simulate(s, 600)` with automation versus 6,000 active 0.1 s ticks: prestige count within ±1, and score within 1.5 decades.
+   - `simulate(s, 8h, { dtMin: 0.5 })` on an automated late-game fixture completes in under 3 s.
 9. **Stars.** SD rate, GP multiplier, the star cost step sequence (e33, e36 … e87, e94 …), and the Stardust upgrade caps.
 10. **Tooltips.** Every `data-tip` key used in `ui.js` exists in `TIPS`, and every function entry returns a non-empty string on a fresh state and on a late-game fixture.
 
