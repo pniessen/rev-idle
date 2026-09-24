@@ -119,6 +119,34 @@ test('cards: exactly the 10 unlock keys, each complete with a valid goal', () =>
   }
 });
 
+// For each unlock card: the latest goal that is necessarily done (GuideGoals.sync
+// marks it and every earlier goal) when src/help.js onTick fires the card.
+const CARD_FIRES_AFTER = {
+  ascendSeen: 'unlockOrange', // canAscend: some ring at cap (100) → Red bought ≥ 95 ≥ 5 → Orange unlocked
+  prestigeSeen: 'reachPrestige', // canPrestige
+  promoSeen: 'reachPromote', // promoXp > 0
+  infinitySeen: 'reachPromote', // first canInfinity: score = INF ≥ prestige req → canPrestige; pending P.Mult ≫ promoMin
+  infTabSeen: 'infinity', // infinities ≥ 1
+  gensSeen: 'buyGens', // hasUpg 1;1
+  autoSeen: 'buyGens', // any automation: 1;1 itself unlocks Autobuy (every other one needs 1;1 first)
+  icSeen: 'unlockIC', // hasUpg 7;1
+  breakSeen: 'allIC', // canBreak: all 9 done
+  // hasUpg 21;1: by code only unlockIC is implied (the Tree chain passes 7;1), but 21;1 costs 1e33 IP,
+  // unreachable with pre-Break IP gains, so Break is treated as done.
+  starsSeen: 'breakInf',
+};
+
+test('an unlock card never deep-links into a section that is still locked', () => {
+  const idx = (id) => GOAL_IDS.indexOf(id);
+  assert.deepEqual(Object.keys(CARD_FIRES_AFTER).sort(), CARD_KEYS.slice().sort());
+  for (const k of CARD_KEYS) {
+    const sec = C.sections.find((x) => x.id === C.cards[k].section);
+    if (sec.unlock !== null) {
+      assert.ok(idx(sec.unlock) <= idx(CARD_FIRES_AFTER[k]), `${k} → ${sec.id} unlocks at ${sec.unlock}`);
+    }
+  }
+});
+
 test('glossary covers the core terms, each defined', () => {
   const terms = C.glossary.map((g) => g.term.toLowerCase());
   for (const t of GLOSSARY_MIN) assert.ok(terms.includes(t), 'missing glossary term: ' + t);
