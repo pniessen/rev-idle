@@ -142,7 +142,7 @@ test('infinity', () => {
   s.scoreLog = 308; assert.ok(!E.canInfinity(s));
   s.scoreLog = 308.3; assert.ok(E.canInfinity(s));
   E.goInfinite(s);
-  assert.equal(s.ip, 1); assert.equal(s.infinities, 1);
+  assert.equal(s.inf.ipLog, 0); assert.equal(s.infinities, 1);
   assert.deepEqual(s.promo, [0, 0, 0, 0]); assert.equal(s.pMult, 1);
 });
 

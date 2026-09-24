@@ -618,18 +618,72 @@ const Engine = (() => {
 
   function newState() {
     return {
-      v: 1,
+      v: 2,
       scoreLog: -Infinity,
       circles: CIRCLES.map((_, i) => freshCircle(i)),
       pMult: 1,
       pExp: 1,
       prestigeReqLog: TUNE.prestigeMinLog,
       promo: [0, 0, 0, 0],
-      ip: 0,
       infinities: 0,
-      stats: { totalLaps: 0, prestiges: 0, promotions: 0, playTime: 0, bestScoreLog: -Infinity },
+      stats: {
+        totalLaps: 0, prestiges: 0, promotions: 0, playTime: 0, bestScoreLog: -Infinity,
+        fastestInfinity: null, lastInfinities: [], totalIpLog: -Infinity,
+      },
       savedAt: 0,
+      inf: {
+        ipLog: -Infinity,
+        upg: {},
+        gens: Array.from({ length: 10 }, () => ({ b: 0, aLog: -Infinity })),
+        gpLog: -Infinity,
+        t: 0, tRun: 0,
+        broken: false, pendingConfirm: false, finaleSeen: false,
+        ic: { active: 0, done: Array(9).fill(false), best: Array(9).fill(null) },
+        stars: { n: 0, nb: 0, ne: 0, sdLog: -Infinity, sdU: [0, 0, 0, 0] },
+        auto: {
+          buy: { on: true, circles: Array(10).fill(true) },
+          asc: { on: true, circles: Array(10).fill(true) },
+          promote: { on: true, order: [0, 1, 2, 3], xFactor: 2, minTime: 1 },
+          prestige: { on: true, multX: 10, expGain: 0, minTime: 0.2 },
+          infinity: { on: false, minIpLog: 0, minTime: 0 },
+          stallSec: 30,
+          confirmInfinity: false,
+        },
+        rt: { markLog: -Infinity, markT: 0 },
+      },
     };
+  }
+
+  // --- merge / migrate ---
+
+  function mergeDefaults(def, obj) {
+    if (Array.isArray(def)) {
+      if (!Array.isArray(obj)) return def;
+      if (def.length === 0) return obj.slice();
+      return def.map((d, i) => (i < obj.length ? mergeDefaults(d, obj[i]) : d));
+    }
+    if (def !== null && typeof def === 'object') {
+      if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) return def;
+      const keys = Object.keys(def);
+      if (keys.length === 0) return Object.assign({}, obj);
+      const out = {};
+      for (const k of keys) {
+        out[k] = k in obj ? mergeDefaults(def[k], obj[k]) : def[k];
+      }
+      return out;
+    }
+    return obj === undefined ? def : obj;
+  }
+
+  function migrate(obj) {
+    if (!obj || typeof obj !== 'object' || (obj.v !== 1 && obj.v !== 2) ||
+        !Array.isArray(obj.circles) || obj.circles.length !== 10) {
+      throw new Error('Invalid save');
+    }
+    if (obj.v === 1) {
+      obj.inf = Object.assign({}, obj.inf, { ipLog: obj.ip > 0 ? Math.log10(obj.ip) : -Infinity });
+    }
+    return Object.assign(mergeDefaults(newState(), obj), { v: 2 });
   }
 
   // --- formulas ---
@@ -832,12 +886,13 @@ const Engine = (() => {
   function goInfinite(s) {
     if (!canInfinity(s)) return false;
     const stats = s.stats;
-    const ip = s.ip + 1;
     const infinities = s.infinities + 1;
+    const inf = s.inf;
     Object.assign(s, newState());
     s.stats = stats;
-    s.ip = ip;
     s.infinities = infinities;
+    s.inf = inf;
+    s.inf.ipLog = logAdd(inf.ipLog, 0);
     return true;
   }
 
@@ -855,10 +910,7 @@ const Engine = (() => {
         ? atob(str)
         : Buffer.from(str, 'base64').toString('utf-8');
       const obj = JSON.parse(json, (k, v) => (v === '-inf' ? -Infinity : v));
-      if (!obj || obj.v !== 1 || !Array.isArray(obj.circles) || obj.circles.length !== 10) {
-        throw new Error('Invalid save');
-      }
-      return Object.assign(newState(), obj);
+      return migrate(obj);
     } catch (e) {
       throw new Error('Invalid save');
     }
@@ -888,7 +940,8 @@ const Engine = (() => {
       mantissa = mantissa / 10;
       mantissaStr = mantissa.toFixed(2);
     }
-    return `${mantissaStr}e${exp}`;
+    const expStr = exp >= 1000 ? exp.toLocaleString('en-US') : String(exp);
+    return `${mantissaStr}e${expStr}`;
   }
 
   return {
@@ -896,6 +949,7 @@ const Engine = (() => {
     INFINITY_LOG,
     TUNE,
     newState,
+    migrate,
     tick,
     simulate,
     lapsPerSec,
