@@ -437,6 +437,56 @@ test('autobuy: cheapest first until nothing affordable; toggles respected', () =
   const u = autoState('1;1'); u.scoreLog = 4; u.inf.auto.buy.on = false; E.autoStep(u, 0.1); assert.equal(u.circles[0].level, 5);
 });
 
+// Spec §6.1: autobuy must behave exactly like repeatedly buying one level of
+// the cheapest affordable enabled/unlocked/below-cap circle (ties -> lower
+// index), capped at autoBuyMaxPerStep LEVELS per call. The engine buys in
+// bulk for speed; this pins it to the one-level-at-a-time reference.
+test('autobuy bulk-buy equals repeated cheapest-first single-level buys (randomized)', () => {
+  let seed = 12345;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const ri = (n) => Math.floor(rnd() * n);
+  const refBuy = (s) => {
+    for (let k = 0; k < E.TUNE.autoBuyMaxPerStep; k++) {
+      let b = -1, bc = Infinity;
+      for (let i = 0; i < 10; i++) {
+        const c = s.circles[i];
+        if (!s.inf.auto.buy.circles[i] || !c.unlocked || c.level >= E.levelCap(c)) continue;
+        const x = E.costLog(s, i);
+        if (x <= s.scoreLog && x < bc) { bc = x; b = i; }
+      }
+      if (b < 0) break;
+      assert.equal(E.buy(s, b, 1), 1);
+    }
+  };
+  let capped = 0, bought = 0;
+  for (let t = 0; t < 1500; t++) {
+    const s = autoState('1;1');
+    const ic9 = rnd() < 0.3;
+    if (ic9) { s.infinities = 5; s.inf.ic.active = 9; }
+    const nUnl = 1 + ri(ic9 ? 4 : 10);
+    for (let i = 0; i < 10; i++) {
+      const c = s.circles[i];
+      c.ascensions = ri(4);
+      c.unlocked = i < nUnl;
+      c.level = c.unlocked ? (rnd() < 0.1 ? E.levelCap(c) - ri(3) : ri(E.levelCap(c))) : 0;
+      c.bought = rnd() < 0.3 ? ri(6) : c.level + ri(50);
+      s.inf.auto.buy.circles[i] = rnd() < 0.85;
+    }
+    s.scoreLog = rnd() < 0.2 ? 50 + rnd() * 250 : rnd() * 60;
+    const a = structuredClone(s), r = structuredClone(s);
+    E._autoBuyOnce(a);
+    refBuy(r);
+    const lv = (x) => x.circles.map((c) => `${c.level}/${c.bought}/${c.unlocked ? 1 : 0}`).join(' ');
+    assert.equal(lv(a), lv(r), `trial ${t}: levels differ`);
+    if (r.scoreLog === -Infinity) assert.equal(a.scoreLog, -Infinity, `trial ${t}`);
+    else assert.ok(Math.abs(a.scoreLog - r.scoreLog) <= 1e-9, `trial ${t}: scoreLog ${a.scoreLog} vs ${r.scoreLog}`);
+    const n = r.circles.reduce((x, c, i) => x + c.bought - s.circles[i].bought, 0);
+    bought += n; if (n === E.TUNE.autoBuyMaxPerStep) capped++;
+  }
+  assert.ok(capped > 20, `only ${capped} trials hit the 500-level cap`);
+  assert.ok(bought > 10000, `only ${bought} levels bought overall`);
+});
+
 test('auto-ascend', () => {
   const s = autoState('1;1', '2;2'); s.inf.auto.buy.on = false; s.circles[0].level = 100;
   E.autoStep(s, 0.1); assert.equal(s.circles[0].ascensions, 1);
@@ -654,10 +704,12 @@ test('offline automation tracks active play at the default step', () => {
   assert.ok(Math.abs(a.stats.bestScoreLog - b.stats.bestScoreLog) <= 1, `best ${a.stats.bestScoreLog} vs ${b.stats.bestScoreLog}`);
 });
 
-test('8 h offline with automation stays within the 3 s budget', () => {
+// Spec §9.1 budget is 3 s; the Node target is 2.5 s to leave margin for
+// slower browser engines (ruling, task 10 fix round 2).
+test('8 h offline with automation stays within the 3 s budget (2.5 s in Node)', () => {
   const s = autoState('1;1', '2;2', '3;1', '3;2', '4;1', '5;3'); s.infinities = 8;
   const t0 = Date.now(); E.simulate(s, 8 * 3600, { dtMin: 0.5 }); const ms = Date.now() - t0;
-  assert.ok(ms < 3000, `took ${ms} ms`);
+  assert.ok(ms <= 2500, `took ${ms} ms`);
 });
 
 // Deferred review item #3: generator (and score) production use explicit

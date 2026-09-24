@@ -328,15 +328,19 @@ const Engine = (() => {
 
   // --- ascension ---
 
-  function canAscend(s, i) {
+  // Optional trailing `m` (mods(s)) on canAscend/ascend/pendingPrestige/
+  // promoXp/canPromote lets hot callers (automation) pass a precomputed
+  // mods object; omitted, it is computed here as before.
+  function canAscend(s, i, m) {
     const c = s.circles[i];
-    return !mods(s).noAscend && c.unlocked && c.level >= levelCap(c);
+    return c.unlocked && c.level >= levelCap(c) && !(m || mods(s)).noAscend;
   }
 
-  function ascend(s, i) {
-    if (!canAscend(s, i)) return false;
+  function ascend(s, i, m) {
+    m = m || mods(s);
+    if (!canAscend(s, i, m)) return false;
     const c = s.circles[i];
-    const p3 = promoEffects(s).p3;
+    const p3 = promoEffects(s, m).p3;
     c.level = 5;
     c.ascensions++;
     c.multGainLog += Math.log10(p3);
@@ -350,9 +354,9 @@ const Engine = (() => {
     return TUNE.pMultBase * (s.scoreLog - 3) ** TUNE.pMultPow * m.pMultMult;
   }
 
-  function pendingPrestige(s) {
-    const m = mods(s);
+  function pendingPrestige(s, m) {
     if (s.scoreLog < 3) return { pMult: 1, pExp: 1 };
+    m = m || mods(s);
     const pMult = Math.pow(rawPendingPMult(s, m), m.gainPow);
     const pExp = 1 + (Math.max(0, s.scoreLog - 5) / TUNE.pExpDiv) * m.pExpMult * m.gainPow;
     return { pMult, pExp };
@@ -377,16 +381,17 @@ const Engine = (() => {
 
   // --- promotions ---
 
-  function promoXp(s) {
-    const m = mods(s);
+  function promoXp(s, m) {
+    m = m || mods(s);
     const pending = canPrestige(s) ? rawPendingPMult(s, m) : 0;
     const mm = Math.max(s.pMult, pending);
     if (mm < TUNE.promoMin) return 0;
     return Math.floor(Math.pow((mm / TUNE.promoMin) ** TUNE.promoPow, m.gainPow));
   }
 
-  function canPromote(s, k) {
-    return !mods(s).disabledPromo.includes(k) && promoXp(s) > s.promo[k];
+  function canPromote(s, k, m) {
+    m = m || mods(s);
+    return !m.disabledPromo.includes(k) && promoXp(s, m) > s.promo[k];
   }
 
   function promote(s, k) {

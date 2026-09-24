@@ -882,15 +882,19 @@ const Engine = (() => {
 
   // --- ascension ---
 
-  function canAscend(s, i) {
+  // Optional trailing `m` (mods(s)) on canAscend/ascend/pendingPrestige/
+  // promoXp/canPromote lets hot callers (automation) pass a precomputed
+  // mods object; omitted, it is computed here as before.
+  function canAscend(s, i, m) {
     const c = s.circles[i];
-    return !mods(s).noAscend && c.unlocked && c.level >= levelCap(c);
+    return c.unlocked && c.level >= levelCap(c) && !(m || mods(s)).noAscend;
   }
 
-  function ascend(s, i) {
-    if (!canAscend(s, i)) return false;
+  function ascend(s, i, m) {
+    m = m || mods(s);
+    if (!canAscend(s, i, m)) return false;
     const c = s.circles[i];
-    const p3 = promoEffects(s).p3;
+    const p3 = promoEffects(s, m).p3;
     c.level = 5;
     c.ascensions++;
     c.multGainLog += Math.log10(p3);
@@ -904,9 +908,9 @@ const Engine = (() => {
     return TUNE.pMultBase * (s.scoreLog - 3) ** TUNE.pMultPow * m.pMultMult;
   }
 
-  function pendingPrestige(s) {
-    const m = mods(s);
+  function pendingPrestige(s, m) {
     if (s.scoreLog < 3) return { pMult: 1, pExp: 1 };
+    m = m || mods(s);
     const pMult = Math.pow(rawPendingPMult(s, m), m.gainPow);
     const pExp = 1 + (Math.max(0, s.scoreLog - 5) / TUNE.pExpDiv) * m.pExpMult * m.gainPow;
     return { pMult, pExp };
@@ -931,16 +935,17 @@ const Engine = (() => {
 
   // --- promotions ---
 
-  function promoXp(s) {
-    const m = mods(s);
+  function promoXp(s, m) {
+    m = m || mods(s);
     const pending = canPrestige(s) ? rawPendingPMult(s, m) : 0;
     const mm = Math.max(s.pMult, pending);
     if (mm < TUNE.promoMin) return 0;
     return Math.floor(Math.pow((mm / TUNE.promoMin) ** TUNE.promoPow, m.gainPow));
   }
 
-  function canPromote(s, k) {
-    return !mods(s).disabledPromo.includes(k) && promoXp(s) > s.promo[k];
+  function canPromote(s, k, m) {
+    m = m || mods(s);
+    return !m.disabledPromo.includes(k) && promoXp(s, m) > s.promo[k];
   }
 
   function promote(s, k) {
@@ -1589,15 +1594,17 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // costLog(s, i) is O(ascensions) (it re-sums the whole cost curve from
   // scratch). autoStep can call into buy/ascend logic many times per tick
-  // (chained ascend->buy->ascend cycles, or several outer iterations when a
-  // large adaptive dt affords multiple promotions/prestiges), and recaching
-  // all 10 circles' costs from scratch on every one of those calls used to
-  // dominate the offline-simulate budget. `cache` is created once per
-  // autoStep() call (see below) and reused across every ascend/buy call
-  // within it: only the circle that actually changed (ascended, bought a
-  // level, or was newly unlocked) gets its entry refreshed. It's discarded
-  // and rebuilt from scratch only when s.circles itself was replaced
-  // (promote/prestige resets the whole array via resetRun()).
+  // (ascend<->buy cycles within a tick), so `cache` is created once per
+  // autoStep() call and reused across every ascend/buy call within it: only
+  // the circle that actually changed (ascended, bought levels, or was newly
+  // unlocked) gets its entry refreshed. It is rebuilt from scratch only when
+  // s.circles itself was replaced (promote/prestige/Infinity reset the whole
+  // array via resetRun()).
+  //
+  // Per circle: pre[i] is costLog without the level term and step[i] is the
+  // per-level log ratio, so pre[i] + level * step[i] is bit-identical to
+  // E.costLog(s, i) at that level (same float operations). den[i] is
+  // log10(10^step - 1), used by the closed-form geometric sums below.
   function ensureBuyCache(s, cache) {
     if (cache.circlesRef === s.circles) return;
     for (let i = 0; i < cache.cost.length; i++) refreshBuyCost(s, cache, i);
@@ -1605,20 +1612,28 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function refreshBuyCost(s, cache, i) {
-    const a = s.inf.auto.buy;
     const c = s.circles[i];
-    if (!a.circles[i] || !c.unlocked || c.level >= E.levelCap(c)) { cache.cost[i] = Infinity; return; }
-    cache.cost[i] = E.costLog(s, i);
-    cache.step[i] = Math.log10(E.CIRCLES[i].costMult + 0.1 * c.ascensions);
+    if (!s.inf.auto.buy.circles[i] || !c.unlocked || c.level >= E.levelCap(c)) { cache.cost[i] = Infinity; return; }
+    const def = E.CIRCLES[i];
+    const a = c.ascensions;
+    let pre = Math.log10(def.initCost);
+    for (let k = 0; k < a; k++) pre += (100 + 10 * k) * Math.log10(def.costMult + 0.1 * k);
+    const r = Math.log10(def.costMult + 0.1 * a);
+    cache.pre[i] = pre;
+    cache.step[i] = r;
+    cache.den[i] = Math.log10(10 ** r - 1);
+    cache.cost[i] = pre + c.level * r;
   }
 
-  function autoAscend(s, u, cache) {
+  function autoAscend(s, u, m, cache) {
     const a = s.inf.auto.asc;
-    if (!(u.asc && a.on)) return false;
+    if (!(u.asc && a.on) || m.noAscend) return false;
     let did = false;
     for (let i = 0; i < s.circles.length; i++) {
-      if (a.circles[i] && E.canAscend(s, i)) {
-        E.ascend(s, i);
+      const c = s.circles[i];
+      // Inline precheck (same test as canAscend) so the common "not at cap"
+      // case costs nothing; ascend() re-checks canAscend with the passed m.
+      if (a.circles[i] && c.unlocked && c.level >= E.levelCap(c) && E.ascend(s, i, m)) {
         did = true;
         if (cache.circlesRef === s.circles) refreshBuyCost(s, cache, i);
       }
@@ -1626,81 +1641,133 @@ if (typeof module !== 'undefined' && module.exports) {
     return did;
   }
 
-  // log10 of sum_{j=0}^{len-1} 10^(j*rLog), via binary doubling in log-space
-  // (using the already-overflow-safe logAdd) instead of the closed-form
-  // geometric-series formula, which would need 10**(rLog*len) and can
-  // overflow a plain JS number long before scoreLog approaches
-  // INFINITY_LOG (~308). O(log len) instead of O(len).
-  function geoLen(rLog, len) {
+  // log10 of sum_{j=0}^{len-1} 10^(j*r) for r > 0, closed form in log space:
+  // r*len + log10(1 - 10^(-r*len)) - log10(10^r - 1). Never forms 10^(r*len),
+  // so it cannot overflow however large the sum is. den = log10(10^r - 1).
+  function geoLen(r, den, len) {
     if (len <= 0) return -Infinity;
-    if (len === 1) return 0;
-    const half = len >> 1;
-    const s = geoLen(rLog, half);
-    let s2 = E.logAdd(s, s + half * rLog);
-    if (len % 2 === 1) s2 = E.logAdd(s2, 2 * half * rLog);
-    return s2;
+    const x = r * len;
+    return x + Math.log10(1 - 10 ** -x) - den;
   }
 
-  function geoCostLog(aLog, rLog, len) {
-    return len <= 0 ? -Infinity : aLog + geoLen(rLog, len);
+  // Largest len >= 0 with aLog + geoLen(r, den, len) <= budget (closed form,
+  // then nudged by one either way against float rounding).
+  function maxAffordable(aLog, r, den, budget) {
+    if (aLog > budget) return 0;
+    let len = Math.floor(E.logAdd(0, budget - aLog + den) / r);
+    while (len > 0 && aLog + geoLen(r, den, len) > budget) len--;
+    while (aLog + geoLen(r, den, len + 1) <= budget) len++;
+    return len;
   }
 
-  // Largest q in [0, capRoom] with geoCostLog(aLog, rLog, q) <= budget.
-  function maxAffordable(aLog, rLog, budget, capRoom) {
-    if (capRoom <= 0 || aLog > budget) return 0;
-    let lo = 1;
-    let hi = capRoom;
-    let best = 0;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      if (geoCostLog(aLog, rLog, mid) <= budget) { best = mid; lo = mid + 1; } else { hi = mid - 1; }
-    }
-    return best;
+  // Inserts circle i into ord[0..len) kept sorted by (cost, index).
+  function insertOrd(ord, len, cost, i) {
+    const ci = cost[i];
+    let p = len;
+    while (p > 0 && (cost[ord[p - 1]] > ci || (cost[ord[p - 1]] === ci && ord[p - 1] > i))) { ord[p] = ord[p - 1]; p--; }
+    ord[p] = i;
+    return len + 1;
   }
 
-  // Buys the cheapest-affordable circle up to as many levels as the current
-  // score affords in one shot (a closed-form "buy max"), instead of one
-  // level at a time up to autoBuyMaxPerStep times. Late-game/offline states
-  // can afford hundreds of levels in a single circle before another circle
-  // becomes the cheapest option; buying them one-by-one (each requiring a
-  // full re-scan of all 10 circles' cached costs) used to dominate the
-  // offline-simulate budget (see task-10 perf notes).
+  // Spec §6.1: repeatedly buy ONE level of the cheapest affordable enabled,
+  // unlocked, below-cap circle (ties -> lower index), at most
+  // TUNE.autoBuyMaxPerStep levels per call. The result is identical to that
+  // one-level-at-a-time loop (pinned by a randomized test against
+  // E.buy(s, i, 1)); it is just cheaper:
+  // - Which level is next depends only on costs, never on the score, so a
+  //   run of levels of the same circle is capped where another circle's next
+  //   level becomes the cheapest (cost < theirs, or <= when they have a
+  //   higher index), where the circle unlocks the next one (bought reaches 5;
+  //   the new circle then competes), at the level cap and at the remaining
+  //   level budget. The score only decides where buying stops: the first
+  //   time the cheapest level is unaffordable.
+  // - The score is tracked in linear space as score = rem * 10^base (base
+  //   re-anchored whenever rem drops below 1e-3), so a level costs one pow
+  //   instead of a logSub. Long runs are summed in closed form, with the last
+  //   two levels bought one at a time so float noise in the bulk sum cannot
+  //   move the stopping point.
+  // The 500-level budget is per call, i.e. per pass of autoStep's loop: a
+  // per-tick budget would throttle coarse offline steps (0.5-2 s) far below
+  // active play (~60 ticks/s) during ascend<->buy cycles.
   function autoBuy(s, u, m, cache) {
     const a = s.inf.auto.buy;
-    if (!(u.buy && a.on)) return false;
+    if (!(u.buy && a.on) || s.scoreLog === -Infinity) return false;
     ensureBuyCache(s, cache);
     const n = s.circles.length;
-    const cost = cache.cost;
-    const step = cache.step;
+    const { cost, pre, step, den } = cache;
+    let base = s.scoreLog;
+    let rem = 1;
+    let left = E.TUNE.autoBuyMaxPerStep;
     let did = false;
-    for (let k = 0; k < E.TUNE.autoBuyMaxPerStep; k++) {
-      let best = -1;
-      let bestCost = Infinity;
-      for (let i = 0; i < n; i++) {
-        if (cost[i] <= s.scoreLog && cost[i] < bestCost) {
-          bestCost = cost[i];
-          best = i;
+    // Circles with a finite cost, sorted by (cost, index). A purchase only
+    // raises the bought circle's cost, so it is re-inserted further back
+    // instead of re-scanning all circles for every level.
+    const ord = cache.ord;
+    let len = 0;
+    for (let i = 0; i < n; i++) if (cost[i] !== Infinity) len = insertOrd(ord, len, cost, i);
+    while (left > 0) {
+      // ord[0] is the cheapest circle (ties -> lower index); ord[1] is the
+      // cheapest competitor, and `strict` says whether it has the lower
+      // index (then best's levels must be strictly cheaper than it).
+      if (len === 0) break;
+      const best = ord[0];
+      const bc = cost[best];
+      const cm = len > 1 ? cost[ord[1]] : Infinity;
+      const strict = len > 1 && ord[1] < best;
+      const x0 = 10 ** (bc - base); // level L's cost relative to the score
+      if (!(x0 <= rem)) break;
+      const c = s.circles[best];
+      const P = pre[best], r = step[best], L = c.level;
+      let q = Math.min(E.levelCap(c) - L, left);
+      const next = best + 1 < m.maxCircles ? s.circles[best + 1] : null;
+      if (next && !next.unlocked) q = Math.min(q, Math.max(1, 5 - c.bought));
+      if (q > 1 && cm !== Infinity && !(strict ? P + (L + 1) * r < cm : P + (L + 1) * r <= cm)) {
+        q = 1; // the usual case once costs interleave: level L+1 loses
+      } else if (q > 1 && cm !== Infinity) {
+        // k = number of levels L, L+1, ... that still beat the competitor
+        // (k >= 2 here: level L was just picked and level L+1 still wins).
+        let k = Math.max(2, Math.min(q, Math.floor((cm - P) / r) - L));
+        while (k > 2 && !(strict ? P + (L + k - 1) * r < cm : P + (L + k - 1) * r <= cm)) k--;
+        while (k < q && (strict ? P + (L + k) * r < cm : P + (L + k) * r <= cm)) k++;
+        q = k;
+      }
+      let bought = 0;
+      if (q === 1) {
+        rem -= x0;
+        bought = 1;
+      } else if (q >= 4) {
+        const bulk = Math.min(q, maxAffordable(bc, r, den[best], base + Math.log10(rem))) - 2;
+        if (bulk > 0) {
+          rem -= 10 ** (bc + geoLen(r, den[best], bulk) - base);
+          bought = bulk;
         }
       }
-      if (best === -1) break;
-      const c = s.circles[best];
-      const capRoom = E.levelCap(c) - c.level;
-      const q = Math.max(1, maxAffordable(cost[best], step[best], s.scoreLog, capRoom));
-      const spend = geoCostLog(cost[best], step[best], q);
-      s.scoreLog = E.logSub(s.scoreLog, spend);
-      c.level += q;
-      c.bought += q;
+      while (bought < q) {
+        const x = 10 ** (P + (L + bought) * r - base);
+        if (!(x <= rem)) break;
+        rem -= x;
+        bought++;
+      }
+      c.level += bought;
+      c.bought += bought;
+      left -= bought;
+      // Re-anchor once the score has dropped a lot, so rem keeps full
+      // relative precision (subtracting from a tiny rem loses digits).
+      if (rem < 1e-3) { base = rem > 0 ? base + Math.log10(rem) : -Infinity; rem = 1; if (base === -Infinity) break; }
       did = true;
-      cost[best] = c.level < E.levelCap(c) ? cost[best] + q * step[best] : Infinity;
-      if (c.bought >= 5 && best + 1 < m.maxCircles) {
-        const next = s.circles[best + 1];
-        if (next && !next.unlocked) {
-          next.unlocked = true;
-          next.level = 0;
-          refreshBuyCost(s, cache, best + 1);
-        }
+      cost[best] = c.level < E.levelCap(c) ? P + c.level * r : Infinity;
+      // Drop best from the front, then re-insert it at its new cost.
+      for (let p = 1; p < len; p++) ord[p - 1] = ord[p];
+      len--;
+      if (cost[best] !== Infinity) len = insertOrd(ord, len, cost, best);
+      if (c.bought >= 5 && next && !next.unlocked) {
+        next.unlocked = true;
+        next.level = 0;
+        refreshBuyCost(s, cache, best + 1);
+        if (cost[best + 1] !== Infinity) len = insertOrd(ord, len, cost, best + 1);
       }
     }
+    if (did) s.scoreLog = rem > 0 && base !== -Infinity ? base + Math.log10(rem) : -Infinity;
     return did;
   }
 
@@ -1712,9 +1779,9 @@ if (typeof module !== 'undefined' && module.exports) {
     if (order.length === 0) return false;
     const idx = s.stats.promotions % order.length;
     const k = order[idx];
-    const xp = E.promoXp(s);
+    const xp = E.promoXp(s, m);
     const threshold = Math.max(1, s.promo[k] * a.xFactor, s.promo[k] + 1);
-    if (xp >= threshold && E.canPromote(s, k)) {
+    if (xp >= threshold && E.canPromote(s, k, m)) {
       E.promote(s, k);
       return true;
     }
@@ -1722,7 +1789,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const n = order.length;
       for (let i = 0; i < n; i++) {
         const kk = order[(idx + i) % n];
-        if (E.canPromote(s, kk)) {
+        if (E.canPromote(s, kk, m)) {
           E.promote(s, kk);
           return true;
         }
@@ -1731,11 +1798,11 @@ if (typeof module !== 'undefined' && module.exports) {
     return false;
   }
 
-  function autoPrestige(s, u) {
+  function autoPrestige(s, u, m) {
     const a = s.inf.auto.prestige;
     if (!(u.prestige && a.on)) return false;
     if (!E.canPrestige(s) || s.inf.tRun < a.minTime) return false;
-    const g = E.pendingPrestige(s);
+    const g = E.pendingPrestige(s, m);
     const stalled = isStalled(s);
     const should = s.pMult === 1
       || g.pMult >= a.multX * s.pMult
@@ -1757,32 +1824,30 @@ if (typeof module !== 'undefined' && module.exports) {
     return true;
   }
 
-  // Exhausts every currently-eligible auto action (ascend/buy/promote/
-  // prestige/infinity) within a single call, looping until nothing more
-  // applies (bounded by autoStepMaxIter). A large adaptive dt can accrue
-  // enough score for several chained promotions/prestiges at once; without
-  // this loop, coarser steps would silently throttle automation to at most
-  // one promote-or-prestige per tick regardless of how much progress that
-  // tick represents, making outcomes depend on step size (see task-10).
+  // Repeats ascend -> buy -> promote/prestige/infinity passes until a pass
+  // does nothing (bounded by autoStepMaxIter). In practice the repeats are
+  // ascend <-> buy cycles: buying a circle to its cap lets it ascend (back to
+  // level 5), which makes it cheap to buy again, all within one tick, so a
+  // coarse offline step is not limited to one ascension per circle per tick.
+  // Promote, prestige and Infinity reset the run (score -> 0), so nothing is
+  // buyable afterwards and no promote -> prestige cascade can follow in the
+  // same tick; at most a prestige can be followed by a promote (promoXp reads
+  // the raised pMult).
   function autoStep(s, dt) {
     updateStall(s);
-    // autoUnlocked(s) only reflects owned upgrades, which never change from
-    // any action this loop takes (buying circle levels, ascending,
-    // promoting, prestiging, going Infinity don't grant upgrades), and
-    // mods(s) is unaffected by them too (aside from IC/star state this loop
-    // never touches). Both are safe to compute once per autoStep call
-    // instead of once per action per iteration.
+    // autoUnlocked(s) only reflects owned upgrades, which nothing in this
+    // loop grants, so it is computed once. mods(s) is recomputed each pass
+    // because promotions change it (e.g. 14;1 reads promo[0]).
     const u = autoUnlocked(s);
-    const n = s.circles.length;
-    const cache = { circlesRef: null, cost: new Array(n).fill(Infinity), step: new Array(n).fill(0) };
+    const cache = newBuyCache(s.circles.length);
     const actions = [];
     for (let iter = 0; iter < E.TUNE.autoStepMaxIter; iter++) {
       let did = false;
       const m = E.mods(s);
-      if (autoAscend(s, u, cache)) { actions.push('ascend'); did = true; }
+      if (autoAscend(s, u, m, cache)) { actions.push('ascend'); did = true; }
       if (autoBuy(s, u, m, cache)) { actions.push('buy'); did = true; }
       if (autoPromote(s, u, m)) { actions.push('promote'); did = true; continue; }
-      if (autoPrestige(s, u)) { actions.push('prestige'); did = true; }
+      if (autoPrestige(s, u, m)) { actions.push('prestige'); did = true; }
       if (autoInfinity(s, u)) { actions.push('infinity'); did = true; }
       if (!did) break;
     }
@@ -1798,7 +1863,20 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   E.registerHooks({ auto: autoStep, stepDt: adaptiveDt });
-  Object.assign(E, { autoUnlocked, anyAutoOn, updateStall, isStalled, autoStep, adaptiveDt });
+  function newBuyCache(n) {
+    return {
+      circlesRef: null,
+      cost: new Array(n).fill(Infinity), pre: new Array(n).fill(0), step: new Array(n).fill(0), den: new Array(n).fill(0),
+      ord: new Array(n).fill(0),
+    };
+  }
+
+  // Test hook: one autobuy call on its own (no ascend/promote/prestige).
+  function _autoBuyOnce(s) {
+    return autoBuy(s, autoUnlocked(s), E.mods(s), newBuyCache(s.circles.length));
+  }
+
+  Object.assign(E, { autoUnlocked, anyAutoOn, updateStall, isStalled, autoStep, adaptiveDt, _autoBuyOnce });
 })(typeof module !== 'undefined' && module.exports ? require('./engine.js') : window.Engine);
 </script>
 <script>// src/render.js
