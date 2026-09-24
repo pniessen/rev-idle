@@ -1527,6 +1527,16 @@ else window.Engine = Engine;
   }
 
   function renderTip() {
+    // A dirty re-render (ui.js rebuilds a tab body with innerHTML = '') can
+    // detach the element a tooltip is anchored to without ever firing
+    // mouseout/blur on it. Detect that here rather than positioning against
+    // a detached node's zero rect (which would otherwise pin the tooltip to
+    // the viewport corner and leave it stuck open indefinitely).
+    if (mode === 'element' && activeTarget && !activeTarget.isConnected) {
+      hide();
+      return;
+    }
+
     var tip = ensureTipNode();
     var text = activeTextFn ? activeTextFn() : '';
     if (!text) {
