@@ -46,6 +46,7 @@
 //                         call (default step, no dtMin override), like the
 //                         UI's offline catch-up, instead of stepping through it.
 //        VERBOSE=1       print a line per Infinity
+//        DIAG=1          print a line of state (t∞, ∞, IP, last run, gens, ICs, stars) per check-in
 //        QUIET=1         only print the summary line
 'use strict';
 
@@ -219,6 +220,8 @@ const NOSKIP = !!process.env.NOSKIP;
 const FROM = process.env.FROM || null;
 const OFFLINE = !!process.env.OFFLINE;
 const VERBOSE = !!process.env.VERBOSE;
+const SNAPIC = !!process.env.SNAPIC; // also snapshot .sim/ic<n>-start.json at each IC's first attempt
+const DIAG = !!process.env.DIAG; // one line of state per check-in
 
 const SIM_DIR = path.join(__dirname, '..', '.sim');
 
@@ -367,6 +370,7 @@ function handleChallenges(s, t, ctx) {
     if (ctx.icRetryAfterCheckin[n] && ctx.checkinCount < ctx.icRetryAfterCheckin[n]) break;
     if (!icGateReady(s, n)) break;
     if (E.canStartChallenge(s, n)) {
+      if (SNAPIC && !ctx.icStartT[n]) writeSnapshot(`ic${n}-start`, t, ctx.tInf1, s);
       E.startChallenge(s, n);
       ctx.icStartT[n] = t;
       ctx.purchased = true;
@@ -398,17 +402,38 @@ function handleBreak(s, t, ctx) {
   }
 }
 
-// Tracks the IP-gain-per-minute peak of the *current* run, sampled every
-// 10 game-seconds, so handleBreak can use the previous run's peak.
+// Tracks the IP-per-minute peak of the *current* run, so handleBreak can set
+// minIpLog to "the IP gain the previous run reached at the moment its
+// IP-per-minute peaked" (spec §13.4). Rate = ipGainLog - log10(max(1, t/60)).
+// Sampled every step while broken (the break bonus moves in x10 steps, and
+// post-Break runs can be seconds long, so a coarse 10 s sample misses them).
+// ctx.curRunPeak is the peak rate, ctx.curRunPeakGain the gain at that peak.
+function ipRate(gainLog, t) { return gainLog - Math.log10(Math.max(1, t / 60)); }
 function sampleIpRate(s, ctx) {
-  if (s.inf.t - ctx.lastSampleT < 10) return;
-  ctx.lastSampleT = s.inf.t;
-  if (s.inf.t <= 0) return;
-  const rate = E.ipGainLog(s) - Math.log10(Math.max(1, s.inf.t / 60));
-  if (rate > ctx.curRunPeak) ctx.curRunPeak = rate;
+  if (!s.inf.broken || s.inf.ic.active || s.inf.t <= 0) return;
+  const g = E.ipGainLog(s);
+  const rate = ipRate(g, s.inf.t);
+  if (rate > ctx.curRunPeak) { ctx.curRunPeak = rate; ctx.curRunPeakGain = g; }
+}
+// Called once per completed Infinity with its final {t, ipGainLog}. The run
+// ended at minIpLog, so if its rate was still at its peak at the very end the
+// optimum lies beyond the threshold: explore one x10 step further next time.
+function closeIpRateRun(s, ctx, last) {
+  if (!s.inf.broken || !last) { ctx.curRunPeak = -Infinity; return; }
+  const endRate = ipRate(last.ipGainLog, last.t);
+  if (endRate >= ctx.curRunPeak - 1e-9) ctx.peakIpPerMinLog = last.ipGainLog + 1;
+  else ctx.peakIpPerMinLog = ctx.curRunPeakGain;
+  ctx.curRunPeak = -Infinity;
 }
 
 function doCheckin(s, t, ctx) {
+  if (DIAG) {
+    const last = s.stats.lastInfinities[s.stats.lastInfinities.length - 1];
+    console.log(`  [check-in] t∞=${fmtT(ctx.tInf1 === null ? 0 : t - ctx.tInf1)} ∞=${s.infinities.toFixed(0)} IP=e${s.inf.ipLog.toFixed(2)}`
+      + ` run=${last ? fmtT(last.t) : '-'} gain=e${last ? last.ipGainLog.toFixed(2) : '-'} next=${SCRIPT_LIST[ctx.scriptPtr] || 'stars'}`
+      + ` gens=[${s.inf.gens.map((g) => g.b).join(',')}] ic=${s.inf.ic.active}/${s.inf.ic.done.filter(Boolean).length}`
+      + ` stars=${s.inf.stars.n}/${s.inf.stars.nb}/${s.inf.stars.ne} sdU=[${s.inf.stars.sdU.join(',')}] score=e${s.scoreLog.toFixed(0)}`);
+  }
   ctx.purchased = false;
   ctx.checkinCount++;
   if (s.inf.pendingConfirm) { E.goInfinite(s); ctx.purchased = true; }
@@ -459,7 +484,7 @@ function passFail(def, value, ctx) {
 
 function printMilestoneTable(m, ctx) {
   console.log('');
-  console.log('Milestone table (uncalibrated):');
+  console.log('Milestone table:');
   console.log('name'.padEnd(34), 'game t'.padEnd(12), 't-inf'.padEnd(12), 'day'.padEnd(8), 'target/floor'.padEnd(28), 'result');
   for (const def of MILESTONE_DEFS) {
     const v = m[def.key];
@@ -626,11 +651,7 @@ function advanceTo(s, ctx, targetT, m) {
       if (ctx.infinityIndex === 2) recordMilestone(ctx.milestones, 'run2', ctx.t, ctx.tInf1, rt);
       if (ctx.infinityIndex === 3) recordMilestone(ctx.milestones, 'run3', ctx.t, ctx.tInf1, rt);
       if (ctx.infinityIndex === 11) recordMilestone(ctx.milestones, 'run11', ctx.t, ctx.tInf1, rt);
-      if (ctx.peakIpPerMinLog === null || ctx.curRunPeak > -Infinity) {
-        ctx.peakIpPerMinLog = ctx.curRunPeak;
-      }
-      ctx.curRunPeak = -Infinity;
-      ctx.lastSampleT = 0;
+      closeIpRateRun(s, ctx, last);
     }
     checkPostRunMilestones(s, ctx, beforeIcDone);
 
@@ -671,8 +692,8 @@ function runLayerCore(startState, startT, startTInf1, endT, opts) {
     dayFirstCheckin: false,
     breakT: null,
     curRunPeak: -Infinity,
+    curRunPeakGain: 0,
     peakIpPerMinLog: 0,
-    lastSampleT: 0,
     last5: [],
     lastInfGain: 1,
     macroStepCount: 0,
@@ -733,7 +754,7 @@ function runLayerCore(startState, startT, startTInf1, endT, opts) {
       if (ctx.infinityIndex === 2) recordMilestone(ctx.milestones, 'run2', ctx.t, ctx.tInf1, rt);
       if (ctx.infinityIndex === 3) recordMilestone(ctx.milestones, 'run3', ctx.t, ctx.tInf1, rt);
       if (ctx.infinityIndex === 11) recordMilestone(ctx.milestones, 'run11', ctx.t, ctx.tInf1, rt);
-      ctx.curRunPeak = -Infinity; ctx.lastSampleT = 0;
+      ctx.curRunPeak = -Infinity;
       // Active profile: this is a check-in.
       doCheckin(s, ctx.t, ctx);
       writeSnapshotOnPhase(s, ctx);

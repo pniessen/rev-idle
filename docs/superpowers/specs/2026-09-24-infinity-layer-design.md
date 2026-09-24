@@ -121,9 +121,9 @@ It performs these steps in order:
 | `v[1..4]` | 1 | `promoEffects` variable parts | see below |
 | `pMultMult` | 1 | `pendingPrestige` | 5;1 factor |
 | `pExpMult` | 1 | `pendingPrestige` | 5;2 factor |
-| `gainPow` | 1 | `pendingPrestige`, `promoXp` | `0.4` if IC4 active |
+| `gainPow` | 1 | `pendingPrestige`, `promoXp` | `TUNE.ic4Pow` (0.32, see Deviations) if IC4 active |
 | `disabledPromo` | [] | `promoEffects`, `canPromote` | `[1,3]` (P2, P4, zero-indexed) if IC1 active |
-| `maxCircles` | 10 | `buy` unlock chain, `tick` | `4` if IC9 active |
+| `maxCircles` | 10 | `buy` unlock chain, `tick` | `TUNE.ic9Circles` (3, see Deviations) if IC9 active |
 | `noAscend` | false | `canAscend` | true if IC8 active |
 | `decay` | 0 | `tick` | `TUNE.ic6Decay` if IC6 active |
 
@@ -576,13 +576,13 @@ These use the concurrent help system: a `data-tip` key with optional `data-tip-i
 | Key | Default | Meaning |
 |---|---|---|
 | `ipBase` | 1 | global IP multiplier (escape hatch) |
-| `genRate` | 1 | global generator output multiplier |
+| `genRate` | 0.0025 (was 1; Task 14) | global generator output multiplier, applied to every M_k |
 | `gpExp0`, `gpExp14`, `gpExp19` | 0.666, 0.75, 0.9 | [W] GP exponents |
 | `genCost` | table §5.1 | per-generator `[log first_k, log step_k]`, applied to `p_k` |
 | `genSoftcapLog` | 1000 | [W] softcap start |
 | `u51Div`, `u51Cap` | 600, 10 | 5;1 |
-| `u52K` | 0.1 | 5;2 |
-| `u62K`, `u162K` | 0.25, 0.05 | 6;2, 16;2 |
+| `u52K` | 0.01 (was 0.1; Task 14) | 5;2 |
+| `u62K`, `u162K` | 0.01 (was 0.25; Task 14), 0.05 | 6;2, 16;2 |
 | `u8TimeDiv` | 60 | 8;1, 9;1 |
 | `u121Pow`, `u171Pow`, `u161Pow` | 0.5, 0.25, 0.2 | ∞-power upgrades |
 | `u141K` | 0.1 | 14;1 |
@@ -595,7 +595,8 @@ These use the concurrent help system: a `data-tip` key with optional `data-tip-i
 | `starBaseCost`, `starExpCost`, `starExpMax` | [34,4], [35,5], 12 | [firstLog, stepLog] |
 | `sdUpgCost` | [[1,2],[1.30103,1],[1.69897,0.47712],[2,0.30103]] | [firstLog, stepLog] |
 | `autoBuyMaxPerStep` | 500 | CPU guard |
-| `ic4Pow` | 0.4 | [W] IC4 gain power (last-resort lever) |
+| `ic4Pow` | 0.32 (wiki 0.4; see Deviations) | [W] IC4 gain power (last-resort lever) |
+| `ic9Circles` | 3 (wiki 4; see Deviations) | [W] IC9 circle limit (last-resort lever) |
 | `breakStartLog`, `breakStepLog` | 2772, 308 | [W] IP bar (×10 at e3,080, then every e308) |
 | `starStep` | `[[0,3],[18,7],[30,'grow']]` | [W]/[R] star cost steps: 3 below index 18, 7 below 30, then `7 + (j−29)` |
 | `dtRunDiv`, `dtMin`, `dtMax`, `dtFixed` | 50, 0.1, 2, 1 | adaptive step (§9.1) |
@@ -647,6 +648,36 @@ Game time equals wall time for a player on this schedule. "t∞" is game time si
 Wiki [W] numbers change only as a last resort. Any such change is recorded in a "Deviations" note in this spec, like the existing 0.04 mult gain.
 
 ---
+
+### 12.4 Calibration results (Task 14)
+
+Changed: `genRate` 1 → 0.0025, `u52K` 0.1 → 0.01, `u62K` 0.25 → 0.01, `ic4Pow` 0.4 → 0.32 [W], `ic9Circles` 4 → 3 [W] (new TUNE key). Full `MODE=layer DAYS=16` run (stepped; `OFFLINE=1` agrees within ±15% on every row; Phase B `NOSKIP=1` replay agrees on Break):
+
+| Milestone | Result (game t / t∞) | Target | Status |
+|---|---|---|---|
+| 1st Infinity | 3h22m04s | 3h22m ±10% | PASS |
+| 2nd Infinity run | 1h32m | 80–100 min | PASS |
+| 3rd Infinity run | 1h03m | 50–70 min | PASS |
+| Run at Infinity 11 | 26m | 25–35 min | PASS |
+| All 4 automations | Infinity 7 | by Infinity 8 | PASS |
+| 7;1 bought | t∞ 11h18m (day 0.47) | 10–16 h | PASS |
+| IC1 / IC2 | 25m / 25m | 30–90 min (floor 15) | below target, above floor |
+| IC3 | 37m | 30–90 min | PASS |
+| IC4 | 3h38m | 3–6 h | PASS |
+| IC5 / IC6 / IC7 | 1m33s / 29s / 18s | 30–90 min (floor 15) | FAIL (below floor) |
+| IC8 | 11m | 30–90 min (floor 15) | FAIL (below floor) |
+| IC9 | 3h44m | 3–6 h | PASS |
+| Break unlocked | t∞ 45h02m (day 1.88) | 48–96 h (floor 40) | below target, above floor |
+| Col 17 / First Star / Finale | t∞ 2d07h / 2d11h / 2d15h | Break+1–2 d / 5–8 d / 7–14 d | FAIL — see open issue below |
+
+**Open issue (blocks Phase C calibration):** while broken, the shipped prestige rule `pExp = 1 + (scoreLog − 5)/225 · …` with `prestigeReqLog = scoreLog` diverges: once Σ multLog exceeds ~225/pExpMult each prestige multiplies pExp, so a broken run goes from e783 to e10^12 score within ~5 s, and the break bonus pays any IP up to the cap in one run. Post-Break pacing is then set only by the auto-Infinity threshold, not by any TUNE value. Capping the score used for the P.Exp gain at `INFINITY_LOG` (bit-identical while fixed) makes broken runs saturate near e5,000 and restores a tunable Phase C; that needs a spec ruling before §12.2's Phase C rows can be calibrated.
+
+**Why IC5–IC8 miss:** these attempts start when normal runs last 11–30 s (the [W] tree multipliers, the ∞-scaled G1 bonus and the IC1–IC4 rewards compound through Phase B). IC5–IC8 handicaps only multiply that by ×1–×50: `ic5Nerf` saturates near 10 min even at 0.003, `ic6Decay` jumps from under 1 min (0.98) to impossible (0.99) and is step-size fragile, and IC7/IC8 have no [R] lever. Meeting them would take [W] handicap changes beyond the listed last-resort levers.
+
+### Deviations
+
+- **IC4 gain power 0.4 → 0.32.** With 0.4 the IC4 attempt at its gate (first G2) took about 1 h; the target is 3–6 h. `ic4Pow` is the spec's last-resort lever for IC4. The value sits near a cliff (0.30 does not complete within 12 h).
+- **IC9 circles 4 → 3.** With 4 colours the attempt took 29–45 min, because normal runs at the gate last about 11 s. There is no [R] lever for IC9, and the circle count is the spec's last-resort lever. With 3 colours it takes about 3 h 44 min.
 
 ## 13. Sim changes (`test/sim.js`)
 

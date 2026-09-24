@@ -3,6 +3,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const E = require('../src/engine.js');
 const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps * Math.max(1, Math.abs(b)), `${a} !~ ${b}`);
+// Runs fn with some TUNE entries temporarily overridden (restored afterwards).
+function withTune(over, fn) {
+  const saved = {}; for (const k of Object.keys(over)) saved[k] = E.TUNE[k];
+  Object.assign(E.TUNE, over);
+  try { return fn(); } finally { Object.assign(E.TUNE, saved); }
+}
+const GR = () => Math.log10(E.TUNE.genRate); // tuned global generator rate (log), part of every M_k
 const b64 = (o) => Buffer.from(JSON.stringify(o, (k, v) => (v === -Infinity ? '-inf' : v))).toString('base64');
 function v1Save(extra) {
   const s = E.newState();
@@ -296,9 +303,9 @@ test('buyGen needs 1;1, the previous tier and IP', () => {
 
 test('generator mult: x2 per purchase; 1;1 gives G1 x Infinities', () => {
   const s = withGens(E.newState()); s.infinities = 8;
-  close(E.genMultLog(s, 0), Math.log10(8));
-  s.inf.gens[0].b = 3; close(E.genMultLog(s, 0), Math.log10(8) + 2 * Math.log10(2));
-  s.inf.gens[1].b = 1; close(E.genMultLog(s, 1), 0);
+  close(E.genMultLog(s, 0), Math.log10(8) + GR());
+  s.inf.gens[0].b = 3; close(E.genMultLog(s, 0), Math.log10(8) + 2 * Math.log10(2) + GR());
+  s.inf.gens[1].b = 1; close(E.genMultLog(s, 1), GR());
 });
 
 test('genSoftcap is continuous at 1000', () => {
@@ -308,14 +315,15 @@ test('genSoftcap is continuous at 1000', () => {
 test('G1 alone: GP = a * m * t', () => {
   const s = withGens(E.newState()); s.infinities = 1;
   for (let i = 0; i < 100; i++) E.tick(s, 0.1);
-  close(10 ** s.inf.gpLog, 10, 1e-6);
+  close(10 ** s.inf.gpLog, 10 * E.TUNE.genRate, 1e-6);
 });
 
 test('two tiers: G2 feeds G1', () => {
   const s = withGens(E.newState()); s.infinities = 1; s.inf.gens[1] = { b: 1, aLog: 0 };
   for (let i = 0; i < 1000; i++) E.tick(s, 0.001);
-  close(10 ** s.inf.gens[0].aLog, 2, 1e-6);
-  close(10 ** s.inf.gpLog, 1.5, 1e-3);
+  const g = E.TUNE.genRate; // a1 = 1 + g·t, GP = g·(t + g·t²/2) at t = 1
+  close(10 ** s.inf.gens[0].aLog, 1 + g, 1e-6);
+  close(10 ** s.inf.gpLog, g * (1 + g / 2), 1e-3);
 });
 
 test('GP multiplies mult gain by GP^0.666 (wiki: GP 16 -> ~6.35)', () => {
@@ -369,10 +377,11 @@ test('Revolution-side effects', () => {
   own(s, '19;3'); close(E.mods(s).lapMult, 3.96);
   own(s, '2;1'); close(E.mods(s).expAdd, 0.01);
   own(s, '6;1'); assert.equal(E.mods(s).ascBase, 12); own(s, '13;1'); assert.equal(E.mods(s).ascBase, 13);
-  s.infinities = 9; own(s, '6;2'); close(E.mods(s).ascMult, 1.25);
-  s.infinities = 3; own(s, '16;2'); close(E.mods(s).ascMult, (1 + 0.25 * Math.log10(4)) * 1.1);
+  const T = E.TUNE;
+  s.infinities = 9; own(s, '6;2'); close(E.mods(s).ascMult, 1 + T.u62K);
+  s.infinities = 3; own(s, '16;2'); close(E.mods(s).ascMult, (1 + T.u62K * Math.log10(4)) * (1 + T.u162K * 2));
   s.inf.t = 600; own(s, '5;1'); close(E.mods(s).pMultMult, 2);
-  own(s, '5;2'); close(E.mods(s).pExpMult, 1.2);
+  own(s, '5;2'); close(E.mods(s).pExpMult, 1 + T.u52K * 2);
   s.promo = [16, 0, 0, 0]; own(s, '14;1'); close(E.mods(s).v[0], 1.4);
 });
 
@@ -609,7 +618,7 @@ test('IC2 asc power /4 then x1.2; IC3 exp -0.4 then +0.03', () => {
 });
 
 test('IC4 gains ^0.4; IC5 promotions x0.25 then x1.1', () => {
-  const s = icReady(4); s.inf.ic.active = 4; assert.equal(E.mods(s).gainPow, 0.4);
+  const s = icReady(4); s.inf.ic.active = 4; assert.equal(E.mods(s).gainPow, E.TUNE.ic4Pow);
   s.inf.ic.active = 5; const a = E.mods(s).v; close(a[0], 0.25); close(a[1], 0.375); close(a[2], 0.25); close(a[3], 0.375);
   s.inf.ic.active = 0; s.inf.ic.done[4] = true;
   const v = E.mods(s).v; close(v[0], 1.1); close(v[1], 1.65); close(v[2], 1.1); close(v[3], 1.65);
@@ -631,7 +640,7 @@ test('IC8 disables ascension; reward +2 base', () => {
 });
 
 test('IC9 limits to 4 circles; reward doubles Infinities; all done enables Break', () => {
-  const s = icReady(9); s.inf.ic.active = 9; assert.equal(E.mods(s).maxCircles, 4); assert.ok(!E.canBreak(s));
+  const s = icReady(9); s.inf.ic.active = 9; assert.equal(E.mods(s).maxCircles, E.TUNE.ic9Circles); assert.ok(!E.canBreak(s));
   s.inf.ic.active = 0; s.inf.ic.done[8] = true; assert.equal(E.infGain(s), 2); assert.ok(E.canBreak(s));
   assert.ok(E.setBroken(s, true)); assert.ok(s.inf.broken);
   assert.ok(!E.setBroken(icReady(1), true));
@@ -683,7 +692,7 @@ test('stardust rate, accumulation and GP boost', () => {
 
 test('stardust multiplies GP gain', () => {
   const a = starState(); a.infinities = 1; a.inf.stars.sdLog = 2; a.inf.stars.ne = 2;
-  E.tick(a, 0.1); close(10 ** a.inf.gpLog, 1, 1e-9);
+  E.tick(a, 0.1); close(10 ** a.inf.gpLog, E.TUNE.genRate, 1e-9);
 });
 
 test('stardust upgrades: costs, caps, effects', () => {
@@ -722,6 +731,10 @@ test('simulate reports IP, Infinities and completed challenges', () => {
   const q = E.simulate(E.newState(), 5); assert.equal(q.infinitiesGained, 0); assert.equal(q.ipGainedLog, -Infinity); assert.deepEqual(q.icCompleted, []);
 });
 
+// These offline tests check step-size equivalence on a fixture that must
+// cycle through several Infinities in 10 min / 8 h, so they pin the generator
+// rate at its unscaled value instead of the calibrated TUNE.genRate.
+const FAST_GENS = { genRate: 1 };
 const trackMk = () => { const s = autoState('1;1', '2;2', '3;1', '3;2', '4;1', '5;3'); s.infinities = 8; return s; };
 
 // Ruling (task 10, fix round 3): offline catch-up uses the DEFAULT dtMin
@@ -730,7 +743,7 @@ const trackMk = () => { const s = autoState('1;1', '2;2', '3;1', '3;2', '4;1', '
 // must be equal; bestScoreLog is only compared when not pinned at the cap.
 // (dtMin 0.5 is still accepted as an opts override but is not tracking-
 // tested: it lags ~47% because every reset restarts the run at dt = dtMin.)
-test('offline automation tracks active play (first Infinity, Infinity count)', () => {
+test('offline automation tracks active play (first Infinity, Infinity count)', () => withTune(FAST_GENS, () => {
   const a = trackMk(), b = trackMk();
   E.simulate(a, 600);
   for (let i = 0; i < 6000; i++) E.tick(b, 0.1);
@@ -743,27 +756,27 @@ test('offline automation tracks active play (first Infinity, Infinity count)', (
     assert.ok(Math.abs(a.stats.bestScoreLog - b.stats.bestScoreLog) <= 1, `best ${a.stats.bestScoreLog} vs ${b.stats.bestScoreLog}`);
   }
   assert.deepEqual(a.inf.ic.done, b.inf.ic.done);
-});
+}));
 
-test('offline automation tracks active play at the default step', () => {
+test('offline automation tracks active play at the default step', () => withTune(FAST_GENS, () => {
   const a = trackMk(), b = trackMk();
   E.simulate(a, 600); // default dtMin (0.1) — same granularity as the loop below
   for (let i = 0; i < 6000; i++) E.tick(b, 0.1);
   assert.ok(Math.abs(a.stats.prestiges - b.stats.prestiges) <= 2, `prestiges ${a.stats.prestiges} vs ${b.stats.prestiges}`);
   assert.ok(Math.abs(a.stats.promotions - b.stats.promotions) <= 2, `promotions ${a.stats.promotions} vs ${b.stats.promotions}`);
   assert.ok(Math.abs(a.stats.bestScoreLog - b.stats.bestScoreLog) <= 1, `best ${a.stats.bestScoreLog} vs ${b.stats.bestScoreLog}`);
-});
+}));
 
 // Ruling (fix round 3): the UI runs offline catch-up in chunks across
 // animation frames, so one simulate call no longer has a 3 s budget. This is
 // only a sanity bound for 8 h at the default step.
-test('8 h offline with automation at the default step completes in <= 6 s (Node)', () => {
+test('8 h offline with automation at the default step completes in <= 6 s (Node)', () => withTune(FAST_GENS, () => {
   const s = trackMk();
   const t0 = Date.now(); E.simulate(s, 8 * 3600); const ms = Date.now() - t0;
   assert.ok(ms <= 6000, `took ${ms} ms`);
-});
+}));
 
-test('offline catch-up in 96 chunks of 300 s equals one 8 h simulate', () => {
+test('offline catch-up in 96 chunks of 300 s equals one 8 h simulate', () => withTune(FAST_GENS, () => {
   const a = trackMk(), b = structuredClone(a);
   E.simulate(a, 8 * 3600);
   for (let i = 0; i < 96; i++) E.simulate(b, 300);
@@ -772,7 +785,7 @@ test('offline catch-up in 96 chunks of 300 s equals one 8 h simulate', () => {
   assert.ok(Math.abs(b.stats.fastestInfinity / a.stats.fastestInfinity - 1) <= 0.05, `fastest ${b.stats.fastestInfinity} vs ${a.stats.fastestInfinity}`);
   assert.deepEqual(b.inf.ic.done, a.inf.ic.done);
   assert.ok(Math.abs(b.inf.ipLog - a.inf.ipLog) <= 0.5, `ipLog ${b.inf.ipLog} vs ${a.inf.ipLog}`);
-});
+}));
 
 // Deferred review item #3: generator (and score) production use explicit
 // Euler with start-of-tick values, so a single large dt (the adaptive
