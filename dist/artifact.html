@@ -1361,13 +1361,13 @@ if (typeof module !== 'undefined' && module.exports) {
   E._inf = { LOG2 }; // internal scratch shared by later sections of this file
 
   Object.assign(E.TUNE, { ipBase: 1, breakStartLog: 2772, breakStepLog: 308 });
-  Object.assign(E.TUNE, { ic1Boost: 1.5, ic5Nerf: 0.25, ic5Reward: 1.1, ic6Decay: 0.01, ic4Pow: 0.4 });
+  Object.assign(E.TUNE, { ic1Boost: 1.5, ic5Nerf: 0.25, ic5Reward: 1.1, ic6Decay: 0.01, ic4Pow: 0.32, ic9Circles: 3 });
   Object.assign(E.TUNE, {
-    genRate: 1, gpExp0: 0.666, genSoftcapLog: 1000,
+    genRate: 0.0025, gpExp0: 0.666, genSoftcapLog: 1000,
     genCost: [[Math.log10(32), Math.log10(5)], [Math.log10(150), 1], [5, 2], [9, 3], [15, 4], [21, 5], [27, 6], [33, 7], [39, 8], [45, 9]],
   });
   Object.assign(E.TUNE, {
-    u51Div: 600, u51Cap: 10, u52K: 0.1, u62K: 0.25, u162K: 0.05, u8TimeDiv: 60,
+    u51Div: 600, u51Cap: 10, u52K: 0.01, u62K: 0.01, u162K: 0.05, u8TimeDiv: 60,
     u121Pow: 0.5, u171Pow: 0.25, u161Pow: 0.2, u141K: 0.1,
     icRefSec: 36000, ctfMax: 1e4, u163Ref: 3600, passiveInfK: 2, u201Ref: 600, u201Cap: 100,
     gpExp14: 0.75, gpExp19: 0.9,
@@ -1481,12 +1481,12 @@ if (typeof module !== 'undefined' && module.exports) {
     { n: 1, name: 'Ionized Speed', handicap: 'P2 and P4 disabled', reward: 'P2 and P4 variable parts ×1.5 (permanent)' },
     { n: 2, name: 'Descent', handicap: 'Ascension power ÷4', reward: 'Ascension power ×1.2 (permanent)' },
     { n: 3, name: 'The First Root', handicap: 'commonExp −0.4', reward: 'commonExp +0.03 (permanent)' },
-    { n: 4, name: 'Steep Climbs', handicap: 'Prestige and promote gains ^0.4', reward: 'Promotions start at level 1 after every Infinity; IP ×2' },
+    { n: 4, name: 'Steep Climbs', handicap: 'Prestige and promote gains ^0.32', reward: 'Promotions start at level 1 after every Infinity; IP ×2' },
     { n: 5, name: 'Fired From Work', handicap: 'All promotion variable parts ×0.25', reward: 'All promotion variable parts ×1.1 (permanent)' },
     { n: 6, name: 'The Drain', handicap: 'Colour mult logs decay each tick', reward: 'All generators ×2 (permanent)' },
     { n: 7, name: 'Quadratic Division', handicap: 'Product of mults ÷ t²', reward: 'Product of mults × t^0.2 (permanent)' },
     { n: 8, name: 'Noscensions', handicap: 'Ascensions disabled', reward: 'Ascension power base +2 (permanent)' },
-    { n: 9, name: 'Isolationism', handicap: 'Only 4 circles can unlock', reward: '∞ gain ×2; unlocks Break Infinity' },
+    { n: 9, name: 'Isolationism', handicap: 'Only 3 circles can unlock', reward: '∞ gain ×2; unlocks Break Infinity' },
   ];
   function canStartChallenge(s, n) {
     return !!s.inf.upg['7;1'] && s.inf.ic.active === 0 && (n === 1 || s.inf.ic.done[n - 2]);
@@ -1559,7 +1559,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (d[6]) m.prodLog += 0.2 * Math.log10(Math.max(1, s.inf.t));
     if (a === 8) m.noAscend = true;
     if (d[7]) m.ascBase += 2;
-    if (a === 9) m.maxCircles = 4;
+    if (a === 9) m.maxCircles = T.ic9Circles;
   });
 
   // ===== Contributors: GEN_FNS (log10 factors) =====
