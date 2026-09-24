@@ -25,9 +25,12 @@
 //   inf-header      The Infinity header (IP / infinity count) (infinity tab) — goal finale
 
 const GuideGoals = (() => {
-  const Engine = typeof module !== 'undefined' && module.exports
-    ? require('./engine.js')
-    : window.Engine;
+  // Resolved per call (not captured at script load) so the browser build
+  // picks up window.Engine even if guide-goals.js's <script> tag runs before
+  // ui.js sets it up; Node tests still get the CommonJS module.
+  function E() {
+    return (typeof window !== 'undefined' && window.Engine) ? window.Engine : require('./engine.js');
+  }
 
   const STAGES = [
     'revolution', 'prestige', 'promotions', 'infinity',
@@ -86,13 +89,13 @@ const GuideGoals = (() => {
     {
       id: 'ascendRed', stage: 'revolution', coach: false, ack: false,
       done: (s) => s.circles.some((c) => c.ascensions >= 1),
-      progress: (s) => ({ cur: s.circles[0].level, max: Engine.levelCap(s.circles[0]), log: false }),
+      progress: (s) => ({ cur: s.circles[0].level, max: E().levelCap(s.circles[0]), log: false }),
       target: target('red-ascend', 'circles'),
     },
     {
       id: 'reachPrestige', stage: 'prestige', coach: false, ack: false,
-      done: (s) => Engine.canPrestige(s) || s.stats.prestiges >= 1,
-      progress: (s) => ({ cur: s.scoreLog, max: Engine.TUNE.prestigeMinLog, log: true }),
+      done: (s) => E().canPrestige(s) || s.stats.prestiges >= 1,
+      progress: (s) => ({ cur: s.scoreLog, max: E().TUNE.prestigeMinLog, log: true }),
       target: target('score-box', null),
     },
     {
@@ -109,10 +112,10 @@ const GuideGoals = (() => {
     },
     {
       id: 'reachPromote', stage: 'promotions', coach: false, ack: false,
-      done: (s) => Engine.promoXp(s) > 0 || s.stats.promotions >= 1,
+      done: (s) => E().promoXp(s) > 0 || s.stats.promotions >= 1,
       progress: (s) => ({
         cur: Math.log10(Math.max(1, s.pMult)),
-        max: Math.log10(Engine.TUNE.promoMin),
+        max: Math.log10(E().TUNE.promoMin),
         log: true,
       }),
       target: target('p-chip', null),
@@ -132,12 +135,12 @@ const GuideGoals = (() => {
     {
       id: 'infinity', stage: 'infinity', coach: false, ack: false,
       done: (s) => s.infinities >= 1,
-      progress: (s) => ({ cur: s.scoreLog, max: Engine.INFINITY_LOG, log: true }),
+      progress: (s) => ({ cur: s.scoreLog, max: E().INFINITY_LOG, log: true }),
       target: target('score-box', null),
     },
     {
       id: 'buyGens', stage: 'infinity', coach: false, ack: false,
-      done: (s) => Engine.hasUpg(s, '1;1'),
+      done: (s) => E().hasUpg(s, '1;1'),
       progress: () => null,
       target: target('inf-tree', 'infinity'),
     },
@@ -149,9 +152,9 @@ const GuideGoals = (() => {
     },
     {
       id: 'automate', stage: 'infinity', coach: false, ack: false,
-      done: (s) => ['1;1', '2;2', '3;2', '5;3'].every((id) => Engine.hasUpg(s, id)),
+      done: (s) => ['1;1', '2;2', '3;2', '5;3'].every((id) => E().hasUpg(s, id)),
       progress: (s) => ({
-        cur: ['1;1', '2;2', '3;2', '5;3'].filter((id) => Engine.hasUpg(s, id)).length,
+        cur: ['1;1', '2;2', '3;2', '5;3'].filter((id) => E().hasUpg(s, id)).length,
         max: 4,
         log: false,
       }),
@@ -159,20 +162,20 @@ const GuideGoals = (() => {
     },
     {
       id: 'unlockIC', stage: 'challenges', coach: false, ack: false,
-      done: (s) => Engine.hasUpg(s, '7;1'),
+      done: (s) => E().hasUpg(s, '7;1'),
       progress: () => null,
       target: target('inf-tree', 'infinity'),
     },
     {
       id: 'firstIC', stage: 'challenges', coach: false, ack: false,
-      done: (s) => Engine.icDoneCount(s) >= 1,
+      done: (s) => E().icDoneCount(s) >= 1,
       progress: () => null,
       target: target('inf-ics', 'infinity'),
     },
     {
       id: 'allIC', stage: 'challenges', coach: false, ack: false,
-      done: (s) => Engine.icDoneCount(s) === 9,
-      progress: (s) => ({ cur: Engine.icDoneCount(s), max: 9, log: false }),
+      done: (s) => E().icDoneCount(s) === 9,
+      progress: (s) => ({ cur: E().icDoneCount(s), max: 9, log: false }),
       target: target('inf-ics', 'infinity'),
     },
     {
@@ -189,8 +192,8 @@ const GuideGoals = (() => {
     },
     {
       id: 'finale', stage: 'finale', coach: false, ack: false,
-      done: (s) => s.inf.ipLog >= Engine.INFINITY_LOG,
-      progress: (s) => ({ cur: s.inf.ipLog, max: Engine.INFINITY_LOG, log: true }),
+      done: (s) => s.inf.ipLog >= E().INFINITY_LOG,
+      progress: (s) => ({ cur: s.inf.ipLog, max: E().INFINITY_LOG, log: true }),
       target: target('inf-header', 'infinity'),
     },
   ];
@@ -198,13 +201,13 @@ const GuideGoals = (() => {
   // spec §1 stage-reached predicates
   const STAGE_PREDICATES = {
     revolution: () => true,
-    prestige: (s) => s.stats.prestiges >= 1 || Engine.canPrestige(s),
-    promotions: (s) => s.stats.promotions >= 1 || Engine.promoXp(s) > 0,
+    prestige: (s) => s.stats.prestiges >= 1 || E().canPrestige(s),
+    promotions: (s) => s.stats.promotions >= 1 || E().promoXp(s) > 0,
     infinity: (s) => s.infinities >= 1,
-    challenges: (s) => Engine.hasUpg(s, '7;1'),
-    break: (s) => s.inf.broken || Engine.canBreak(s),
-    stars: (s) => Engine.hasUpg(s, '21;1'),
-    finale: (s) => s.inf.ipLog >= Engine.INFINITY_LOG,
+    challenges: (s) => E().hasUpg(s, '7;1'),
+    break: (s) => s.inf.broken || E().canBreak(s),
+    stars: (s) => E().hasUpg(s, '21;1'),
+    finale: (s) => s.inf.ipLog >= E().INFINITY_LOG,
   };
 
   function stageReached(s, stageId) {

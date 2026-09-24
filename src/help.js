@@ -100,7 +100,7 @@
   // tuned values here.
 
   var TIPS = {
-    score: 'Your total score. Each lap around a ring multiplies your score by that ring’s ×mult, then by every other unlocked ring’s mult.',
+    score: 'Your total score. Score per lap = (every unlocked ring’s ×mult multiplied together × P.Mult) ^ exponent — every lap of any ring earns that amount. Income = score per lap × laps per second.',
     income: function (s) {
       return 'Score gained per second: score per lap × total laps/s across every unlocked ring. Right now that’s ' + fmt(Engine.incomeLog(s)) + '/s.';
     },
@@ -602,6 +602,10 @@
   }
 
   function showIntro() {
+    if (window.Guide && typeof window.Guide.showIntro === 'function') {
+      window.Guide.showIntro();
+      return;
+    }
     if (hooks.isModalOpen()) return;
     var panel = el('div', { class: 'modal-panel' }, [
       el('h2', { class: 'modal-title' }, ['How to play']),
@@ -640,63 +644,57 @@
 
   // ---------- one-time unlock tips ----------
 
+  // Spec §7: when guidance is on, an unlock explainer card (Guide.unlock)
+  // replaces the toast; when guidance is off (or Guide isn't loaded), the
+  // original toast text is used as a fallback.
+  function fireUnlock(key, toastMsg) {
+    if (!markSeen(key)) return;
+    if (window.Guide && typeof window.Guide.isEnabled === 'function' && window.Guide.isEnabled()) {
+      window.Guide.unlock(key);
+    } else {
+      hooks.toast(toastMsg);
+    }
+  }
+
   function onTick(state) {
     if (!state) return;
     for (var i = 0; i < state.circles.length; i++) {
       if (Engine.canAscend(state, i)) {
-        if (markSeen('ascendSeen')) {
-          hooks.toast('Ascend ready — max-level rings can reset to level 5 for a mult gain boost. Hover the button for details.');
-        }
+        fireUnlock('ascendSeen', 'Ascend ready — max-level rings can reset to level 5 for a mult gain boost. Hover the button for details.');
         break;
       }
     }
     if (Engine.canPrestige(state)) {
-      if (markSeen('prestigeSeen')) {
-        hooks.toast('Prestige ready — reset your rings for a permanent score boost. Hover the Prestige tab for details.');
-      }
+      fireUnlock('prestigeSeen', 'Prestige ready — reset your rings for a permanent score boost. Hover the Prestige tab for details.');
     }
     if (Engine.promoXp(state) > 0) {
-      if (markSeen('promoSeen')) {
-        hooks.toast('Promotions ready — spend XP on permanent boosts. Hover a card on the Promote tab for details.');
-      }
+      fireUnlock('promoSeen', 'Promotions ready — spend XP on permanent boosts. Hover a card on the Promote tab for details.');
     }
     if (Engine.canInfinity(state)) {
       if (hooks.isModalOpen() === 'infinity') {
         markSeen('infinitySeen');
-      } else if (markSeen('infinitySeen')) {
-        hooks.toast('Infinity reached — hover Go Infinite for details.');
+      } else {
+        fireUnlock('infinitySeen', 'Infinity reached — hover Go Infinite for details.');
       }
     }
     if (state.infinities >= 1) {
-      if (markSeen('infTabSeen')) {
-        hooks.toast('∞ tab unlocked — spend Infinity Points on upgrades.');
-      }
+      fireUnlock('infTabSeen', '∞ tab unlocked — spend Infinity Points on upgrades.');
     }
     if (Engine.hasUpg(state, '1;1')) {
-      if (markSeen('gensSeen')) {
-        hooks.toast('Generators online — they build Generator Power, which boosts every ring’s mult gain.');
-      }
+      fireUnlock('gensSeen', 'Generators online — they build Generator Power, which boosts every ring’s mult gain.');
     }
     var auto = Engine.autoUnlocked(state);
     if (auto.buy || auto.asc || auto.promote || auto.prestige || auto.infinity) {
-      if (markSeen('autoSeen')) {
-        hooks.toast('Automation unlocked — configure it in ∞ → Auto.');
-      }
+      fireUnlock('autoSeen', 'Automation unlocked — configure it in ∞ → Auto.');
     }
     if (Engine.hasUpg(state, '7;1')) {
-      if (markSeen('icSeen')) {
-        hooks.toast('Infinity Challenges unlocked — beat them for permanent rewards.');
-      }
+      fireUnlock('icSeen', 'Infinity Challenges unlocked — beat them for permanent rewards.');
     }
     if (Engine.canBreak(state)) {
-      if (markSeen('breakSeen')) {
-        hooks.toast('Break Infinity available — score can now pass ' + fmt(Engine.INFINITY_LOG) + '.');
-      }
+      fireUnlock('breakSeen', 'Break Infinity available — score can now pass ' + fmt(Engine.INFINITY_LOG) + '.');
     }
     if (Engine.hasUpg(state, '21;1')) {
-      if (markSeen('starsSeen')) {
-        hooks.toast('Stars unlocked — they make Stardust, which powers Generators.');
-      }
+      fireUnlock('starsSeen', 'Stars unlocked — they make Stardust, which powers Generators.');
     }
   }
 

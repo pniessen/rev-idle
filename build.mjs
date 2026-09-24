@@ -26,6 +26,9 @@ const engineInf = read('src/engine-infinity.js');
 const engineAuto = read('src/engine-auto.js');
 const render = read('src/render.js');
 const help = read('src/help.js');
+const guideGoals = read('src/guide-goals.js');
+const guideContent = read('src/guide-content.js');
+const guide = read('src/guide.js');
 const uiInf = read('src/ui-infinity.js');
 const ui = read('src/ui.js');
 
@@ -36,6 +39,9 @@ const markers = [
   ['/*@ENGINE_AUTO*/', engineAuto],
   ['/*@RENDER*/', render],
   ['/*@HELP*/', help],
+  ['/*@GUIDE_GOALS*/', guideGoals],
+  ['/*@GUIDE_CONTENT*/', guideContent],
+  ['/*@GUIDE*/', guide],
   ['/*@UI_INF*/', uiInf],
   ['/*@UI*/', ui],
 ];

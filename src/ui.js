@@ -318,18 +318,20 @@
       var c = state.circles[i];
       if (!c.unlocked) continue;
       var def = Engine.CIRCLES[i];
-      var chip = el('span', {
+      var chipAttrs = {
         class: 'chip',
         style: 'color:' + def.color + ';border-color:' + def.color,
         'data-tip': 'circleChip',
         'data-tip-i': String(i),
         tabindex: '0',
-      }, [
+      };
+      if (i === 0) chipAttrs['data-guide'] = 'multbar-red';
+      var chip = el('span', chipAttrs, [
         '\u00D7' + fmt(c.multLog),
       ]);
       frag.appendChild(chip);
     }
-    frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'pMultChip', tabindex: '0' }, ['P \u00D7' + fmt(Math.log10(state.pMult))]));
+    frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'pMultChip', 'data-guide': 'p-chip', tabindex: '0' }, ['P \u00D7' + fmt(Math.log10(state.pMult))]));
     if (state.pExp > 1) {
       frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'pExpChip', tabindex: '0' }, ['^' + state.pExp.toFixed(3)]));
     }
@@ -380,6 +382,7 @@
         'aria-selected': String(t.id === currentTab),
         onclick: function () { location.hash = '#' + t.id; },
       };
+      if (t.id === 'promote') attrs['data-guide'] = 'promote-tab';
       // Only Stats/Settings get the label/icon pair the <420px media query
       // swaps between; other tabs keep a plain text child so that query
       // (which only targets .tab-label/.tab-icon) never touches them.
@@ -429,7 +432,7 @@
   function renderCirclesTab(root) {
     var wrap = el('div', { class: 'tab-body-inner' });
 
-    var modeRow = el('div', { id: 'buy-mode', role: 'group', 'aria-label': 'Buy mode', 'data-tip': 'buyMode' });
+    var modeRow = el('div', { id: 'buy-mode', role: 'group', 'aria-label': 'Buy mode', 'data-tip': 'buyMode', 'data-guide': 'buy-mode-toggle' });
     ['1', '10', 'max'].forEach(function (m) {
       var label = m === 'max' ? 'Max' : '\u00D7' + m;
       var btn = el('button', {
@@ -454,7 +457,7 @@
     }
     if (firstLocked > 0) {
       var prevName = Engine.CIRCLES[firstLocked - 1].name;
-      wrap.appendChild(el('div', { class: 'circle-row locked', tabindex: '0', 'data-tip': 'lockedRow' }, [
+      wrap.appendChild(el('div', { class: 'circle-row locked', tabindex: '0', 'data-tip': 'lockedRow', 'data-guide': 'next-locked-row' }, [
         el('div', { class: 'swatch', style: 'color:' + Engine.CIRCLES[firstLocked].color }),
         el('div', { class: 'circle-info' }, [
           el('div', { class: 'circle-name' }, [Engine.CIRCLES[firstLocked].name]),
@@ -489,7 +492,10 @@
     row.appendChild(info);
 
     var actions = el('div', { class: 'circle-actions' });
-    var buyBtn = el('button', { class: 'btn buy-btn', 'data-i': String(i), 'data-tip': 'buyBtn', 'data-tip-i': String(i) });
+    var buyAttrs = { class: 'btn buy-btn', 'data-i': String(i), 'data-tip': 'buyBtn', 'data-tip-i': String(i) };
+    if (i === 0) buyAttrs['data-guide'] = 'red-buy';
+    else if (i === 1) buyAttrs['data-guide'] = 'orange-buy';
+    var buyBtn = el('button', buyAttrs);
     buyBtn.style.setProperty('--circle', def.color);
     buyBtn.addEventListener('click', function () {
       var wasUnlockedNext = state.circles[i + 1] ? state.circles[i + 1].unlocked : true;
@@ -507,7 +513,9 @@
     updateBuyButton(buyBtn, i);
 
     if (Engine.canAscend(state, i)) {
-      var ascendBtn = el('button', { class: 'btn ascend', 'data-tip': 'ascendBtn', 'data-tip-i': String(i) }, ['Ascend']);
+      var ascendAttrs = { class: 'btn ascend', 'data-tip': 'ascendBtn', 'data-tip-i': String(i) };
+      if (i === 0) ascendAttrs['data-guide'] = 'red-ascend';
+      var ascendBtn = el('button', ascendAttrs, ['Ascend']);
       ascendBtn.addEventListener('click', function () {
         if (Engine.ascend(state, i)) {
           toast(def.name + ' ascended');
@@ -608,7 +616,7 @@
       el('span', {}, [pendingPrestigeText()]),
     ]));
 
-    var btn = el('button', { id: 'prestige-btn', class: 'btn primary full-width' });
+    var btn = el('button', { id: 'prestige-btn', class: 'btn primary full-width', 'data-guide': 'prestige-button' });
     btn.disabled = !Engine.canPrestige(state);
     twoStepConfirm(btn, 'Prestige', 'Confirm reset?', function () {
       if (Engine.prestige(state)) {
@@ -701,7 +709,7 @@
       var xp = Engine.promoXp(state);
       var cur = Engine.promoEffects(state)[meta.key];
       var next = effectAt(k, xp);
-      var card = el('div', { class: 'card', 'data-k': String(k), tabindex: '0', 'data-tip': 'promoCard', 'data-tip-i': String(k) }, [
+      var card = el('div', { class: 'card', 'data-k': String(k), tabindex: '0', 'data-tip': 'promoCard', 'data-tip-i': String(k), 'data-guide': 'promote-card' }, [
         el('div', { class: 'card-title' }, [meta.name + ' \u2014 Lv ' + level]),
         el('div', { class: 'stat-line' }, [
           el('span', { class: 'label' }, ['Effect']),
@@ -841,6 +849,25 @@
       }, ['Confirm each Infinity: ' + (state.inf.auto.confirmInfinity ? 'On' : 'Off')]),
     ]));
 
+    if (window.Guide) {
+      wrap.appendChild(el('h2', { class: 'section-title' }, ['Guidance']));
+      wrap.appendChild(el('div', { class: 'row' }, [
+        el('button', {
+          id: 'guide-toggle',
+          class: 'btn toggle',
+          'aria-pressed': String(window.Guide.isEnabled()),
+          onclick: function () {
+            window.Guide.setEnabled(!window.Guide.isEnabled());
+            markDirty();
+          },
+        }, ['Show guidance: ' + (window.Guide.isEnabled() ? 'On' : 'Off')]),
+        el('button', {
+          class: 'btn',
+          onclick: function () { window.Guide.restartTutorial(); },
+        }, ['Restart tutorial']),
+      ]));
+    }
+
     wrap.appendChild(el('h2', { class: 'section-title' }, ['Export']));
     var exportArea = el('textarea', { class: 'save-area', readonly: 'true' });
     exportArea.value = Engine.serialize(state);
@@ -907,6 +934,11 @@
       btn.setAttribute('aria-pressed', String(state.inf.auto.confirmInfinity));
       btn.textContent = 'Confirm each Infinity: ' + (state.inf.auto.confirmInfinity ? 'On' : 'Off');
     }
+    var guideBtn = root.querySelector('#guide-toggle');
+    if (guideBtn && window.Guide) {
+      guideBtn.setAttribute('aria-pressed', String(window.Guide.isEnabled()));
+      guideBtn.textContent = 'Show guidance: ' + (window.Guide.isEnabled() ? 'On' : 'Off');
+    }
   }
 
   // ---------- tab dispatch ----------
@@ -951,7 +983,8 @@
       return;
     }
     if (e.key === '?' || e.key === 'h' || e.key === 'H') {
-      if (Help) Help.showIntro();
+      if (window.Guide) window.Guide.openGuide();
+      else if (Help) Help.showIntro();
       return;
     }
     var digit = e.key;
@@ -1252,6 +1285,7 @@
       Help.onTick(state);
       Help.refresh();
     }
+    if (window.Guide) window.Guide.tick(state);
   }
 
   // ---------- boot ----------
@@ -1284,7 +1318,7 @@
       class: 'help-btn',
       'aria-label': 'How to play',
       'data-tip': 'helpBtn',
-      onclick: function () { if (Help) Help.showIntro(); },
+      onclick: function () { if (window.Guide) window.Guide.openGuide(); else if (Help) Help.showIntro(); },
     }, ['?']);
     els.multbar.appendChild(els.multbarChips);
     els.multbar.appendChild(els.helpBtn);
@@ -1294,6 +1328,7 @@
     if (els.stage) els.stage.appendChild(els.icBanner);
 
     els.scorebox = document.getElementById('scorebox');
+    if (els.scorebox) els.scorebox.setAttribute('data-guide', 'score-box');
     els.infinityBtn = el('button', {
       id: 'infinity-btn',
       class: 'btn primary',
@@ -1314,6 +1349,23 @@
         showModal: function (node) { modalOpen = 'intro'; showModal(node); },
         hideModal: hideModal,
         getState: function () { return state; },
+      });
+    }
+
+    if (window.Guide) {
+      window.Guide.init({
+        el: el,
+        toast: toast,
+        isModalOpen: function () { return modalOpen; },
+        showModal: function (node) { modalOpen = 'guide'; showModal(node); },
+        hideModal: hideModal,
+        getState: function () { return state; },
+        setTab: function (id) {
+          if (currentTab !== id) location.hash = '#' + id;
+          else markDirty();
+        },
+        isCatchingUp: function () { return catchingUp; },
+        hadSave: hadSave,
       });
     }
 

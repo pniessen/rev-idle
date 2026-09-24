@@ -74,7 +74,7 @@
   }
 
   function renderHeader(kit, state) {
-    return kit.el('div', { id: 'inf-header', class: 'inf-header' }, [
+    return kit.el('div', { id: 'inf-header', class: 'inf-header', 'data-guide': 'inf-header' }, [
       kit.el('span', { class: 'inf-ip', tabindex: '0', 'data-tip': 'ipHeader' }, [ipLineText(state)]),
       kit.el('span', {}, [' · ']),
       kit.el('span', { class: 'inf-count', tabindex: '0', 'data-tip': 'infCount' }, [infLineText(state)]),
@@ -219,7 +219,7 @@
   function renderTree(kit, state) {
     var cols = columnsOf(Engine.UPGRADES);
     var reveal = revealColumns(state, cols);
-    var wrap = kit.el('div', { class: 'inf-tree' });
+    var wrap = kit.el('div', { class: 'inf-tree', 'data-guide': 'inf-tree' });
     reveal.shown.forEach(function (col) {
       var dimmed = col === reveal.previewCol;
       var grid = kit.el('div', { class: 'iu-grid' });
@@ -344,7 +344,7 @@
   }
 
   function renderGens(kit, state) {
-    var wrap = kit.el('div', { class: 'inf-gens' });
+    var wrap = kit.el('div', { class: 'inf-gens', 'data-guide': 'inf-gens' });
     wrap.appendChild(kit.el('div', { class: 'stat-line gp-line', tabindex: '0', 'data-tip': 'gpLine' }, [
       kit.el('span', { id: 'gp-line-value' }, [gpLineText(state)]),
     ]));
@@ -617,7 +617,7 @@
   }
 
   function buildBreakCard(kit, state) {
-    var card = kit.el('div', { class: 'card ic-break-card', 'data-broken': String(state.inf.broken) }, [
+    var card = kit.el('div', { class: 'card ic-break-card', 'data-broken': String(state.inf.broken), 'data-guide': 'inf-break' }, [
       kit.el('div', { class: 'card-title' }, ['Break Infinity']),
     ]);
     var btn = kit.el('button', { class: 'btn full-width', 'data-tip': 'breakToggle', tabindex: '0' }, [state.inf.broken ? 'Fix' : 'Break']);
@@ -672,7 +672,7 @@
   }
 
   function renderICs(kit, state) {
-    var wrap = kit.el('div', { class: 'inf-ics' });
+    var wrap = kit.el('div', { class: 'inf-ics', 'data-guide': 'inf-ics' });
     if (Engine.canBreak(state)) wrap.appendChild(buildBreakCard(kit, state));
     Engine.CHALLENGES.forEach(function (c) { wrap.appendChild(buildIcCard(kit, state, c)); });
     if (Engine.icDoneCount(state) === 9) {
@@ -797,7 +797,7 @@
   }
 
   function renderStars(kit, state) {
-    var wrap = kit.el('div', { class: 'inf-stars' });
+    var wrap = kit.el('div', { class: 'inf-stars', 'data-guide': 'inf-stars' });
     wrap.appendChild(kit.el('div', { class: 'stat-line', id: 'star-line', tabindex: '0', 'data-tip': 'sdAmount' }, [
       kit.el('span', { id: 'star-line-value' }, [starLineText(state)]),
     ]));
@@ -858,8 +858,21 @@
     else if (subTab === 'stars') updateStars(body, kit, state);
   }
 
+  // Lets Guide (Task 3) drive the ∞ sub-tab when a goal's target lives in a
+  // specific one (Gens, ICs, Stars, ...). Only sets the in-memory selection;
+  // the next render (kit.markDirty / the outer tab dispatch) picks it up.
+  function setSubTab(id) {
+    if (SUBTABS.some(function (t) { return t.id === id; })) {
+      subTab = id;
+      saveSubTab(id);
+    }
+  }
+  function getSubTab() { return subTab; }
+
   window.InfinityUI = {
     render: render,
     update: update,
+    setSubTab: setSubTab,
+    getSubTab: getSubTab,
   };
 })();

@@ -433,6 +433,8 @@ textarea.save-area {
   padding: 24px;
   max-width: 420px;
   width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
 }
 
@@ -809,6 +811,295 @@ textarea.save-area {
 
 .sd-row .card-title { margin-bottom: 4px; }
 .sd-row button { margin-top: 8px; }
+
+/* ---------- guide: goal-pulse highlight ---------- */
+
+.guide-pulse {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  animation: guide-pulse 1.8s ease-in-out infinite;
+}
+
+.guide-pulse.guide-pulse-strong {
+  outline-width: 3px;
+  animation: guide-pulse-strong 0.8s ease-in-out infinite;
+}
+
+@keyframes guide-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201, 184, 255, 0.55); }
+  50% { box-shadow: 0 0 0 6px rgba(201, 184, 255, 0); }
+}
+
+@keyframes guide-pulse-strong {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201, 184, 255, 0.8); }
+  50% { box-shadow: 0 0 0 10px rgba(201, 184, 255, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-pulse, .guide-pulse.guide-pulse-strong { animation: none; box-shadow: 0 0 0 3px rgba(201, 184, 255, 0.55); }
+}
+
+/* ---------- guide: journey strip ---------- */
+
+.guide-journey {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.guide-journey-stage {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.guide-journey-stage.reached { color: var(--text); border-color: var(--muted); }
+
+.guide-journey-stage.current {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 8px 1px rgba(201, 184, 255, 0.4);
+}
+
+/* ---------- guide: next-goal card ---------- */
+
+.guide-card {
+  pointer-events: auto;
+  margin-top: 10px;
+  width: min(320px, 100%);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.guide-card[hidden] { display: none; }
+
+.guide-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.guide-card-collapse {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.guide-card-title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.guide-card-pct {
+  flex: none;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.guide-card-body { margin-top: 8px; }
+
+.guide-card-progress-text {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.guide-card-why {
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.guide-card-done {
+  color: var(--accent);
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.guide-card .row { margin-top: 8px; }
+.guide-card .btn { min-height: 40px; padding: 8px 12px; font-size: 12px; }
+.guide-card .guide-journey { margin-top: 10px; }
+
+@media (max-width: 820px) {
+  .guide-card { width: 100%; margin: 10px 16px; }
+}
+
+/* ---------- guide: intro / full guide panel ---------- */
+
+.guide-objective { margin-bottom: 4px; }
+
+.guide-panel {
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.guide-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.guide-panel-close {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.guide-panel-body > * + * { margin-top: 14px; }
+
+.guide-toc {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.guide-toc-link {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  padding: 6px 10px;
+  min-height: 40px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.guide-toc-link:hover { color: var(--text); border-color: var(--muted); }
+.guide-toc-link.locked { opacity: 0.5; }
+
+.guide-section-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+
+.guide-section p.help { margin-top: 6px; }
+
+.guide-section.locked p.help { font-style: italic; }
+
+.guide-todo {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.guide-todo li { margin-top: 4px; }
+
+.guide-glossary {
+  margin: 0;
+  font-size: 12px;
+}
+
+.guide-glossary dt {
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 8px;
+}
+
+.guide-glossary dd {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+
+/* ---------- guide: unlock explainer cards ---------- */
+
+.guide-unlock-card { max-width: 460px; max-height: 85vh; overflow-y: auto; }
+.guide-card-sep { border: none; border-top: 1px solid var(--line); margin: 12px 0; }
+.guide-card-todo { font-weight: 500; margin-top: 8px; }
+
+/* ---------- guide: first-minutes coach spotlight ---------- */
+
+.guide-spotlight-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  pointer-events: none;
+}
+
+.guide-spotlight-hole {
+  position: absolute;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(4, 3, 8, 0.7);
+  transition: left 0.15s ease, top 0.15s ease, width 0.15s ease, height 0.15s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .guide-spotlight-hole { transition: none; }
+}
+
+.guide-spotlight-pop {
+  position: absolute;
+  pointer-events: auto;
+  max-width: 280px;
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+.guide-spotlight-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.guide-spotlight-text {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.guide-spotlight-hint {
+  margin-top: 8px;
+  color: var(--accent);
+}
+
+.guide-spotlight-pop .row { margin-top: 10px; }
+
+.guide-skip-tutorial {
+  display: block;
+  margin-top: 8px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  text-decoration: underline;
+  padding: 6px 0;
+  min-height: 40px;
+  cursor: pointer;
+  font-size: 11px;
+}
 
 /* ---------- canvas IC overlay ---------- */
 
@@ -2719,7 +3010,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // tuned values here.
 
   var TIPS = {
-    score: 'Your total score. Each lap around a ring multiplies your score by that ring’s ×mult, then by every other unlocked ring’s mult.',
+    score: 'Your total score. Score per lap = (every unlocked ring’s ×mult multiplied together × P.Mult) ^ exponent — every lap of any ring earns that amount. Income = score per lap × laps per second.',
     income: function (s) {
       return 'Score gained per second: score per lap × total laps/s across every unlocked ring. Right now that’s ' + fmt(Engine.incomeLog(s)) + '/s.';
     },
@@ -3221,6 +3512,10 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function showIntro() {
+    if (window.Guide && typeof window.Guide.showIntro === 'function') {
+      window.Guide.showIntro();
+      return;
+    }
     if (hooks.isModalOpen()) return;
     var panel = el('div', { class: 'modal-panel' }, [
       el('h2', { class: 'modal-title' }, ['How to play']),
@@ -3259,63 +3554,57 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // ---------- one-time unlock tips ----------
 
+  // Spec §7: when guidance is on, an unlock explainer card (Guide.unlock)
+  // replaces the toast; when guidance is off (or Guide isn't loaded), the
+  // original toast text is used as a fallback.
+  function fireUnlock(key, toastMsg) {
+    if (!markSeen(key)) return;
+    if (window.Guide && typeof window.Guide.isEnabled === 'function' && window.Guide.isEnabled()) {
+      window.Guide.unlock(key);
+    } else {
+      hooks.toast(toastMsg);
+    }
+  }
+
   function onTick(state) {
     if (!state) return;
     for (var i = 0; i < state.circles.length; i++) {
       if (Engine.canAscend(state, i)) {
-        if (markSeen('ascendSeen')) {
-          hooks.toast('Ascend ready — max-level rings can reset to level 5 for a mult gain boost. Hover the button for details.');
-        }
+        fireUnlock('ascendSeen', 'Ascend ready — max-level rings can reset to level 5 for a mult gain boost. Hover the button for details.');
         break;
       }
     }
     if (Engine.canPrestige(state)) {
-      if (markSeen('prestigeSeen')) {
-        hooks.toast('Prestige ready — reset your rings for a permanent score boost. Hover the Prestige tab for details.');
-      }
+      fireUnlock('prestigeSeen', 'Prestige ready — reset your rings for a permanent score boost. Hover the Prestige tab for details.');
     }
     if (Engine.promoXp(state) > 0) {
-      if (markSeen('promoSeen')) {
-        hooks.toast('Promotions ready — spend XP on permanent boosts. Hover a card on the Promote tab for details.');
-      }
+      fireUnlock('promoSeen', 'Promotions ready — spend XP on permanent boosts. Hover a card on the Promote tab for details.');
     }
     if (Engine.canInfinity(state)) {
       if (hooks.isModalOpen() === 'infinity') {
         markSeen('infinitySeen');
-      } else if (markSeen('infinitySeen')) {
-        hooks.toast('Infinity reached — hover Go Infinite for details.');
+      } else {
+        fireUnlock('infinitySeen', 'Infinity reached — hover Go Infinite for details.');
       }
     }
     if (state.infinities >= 1) {
-      if (markSeen('infTabSeen')) {
-        hooks.toast('∞ tab unlocked — spend Infinity Points on upgrades.');
-      }
+      fireUnlock('infTabSeen', '∞ tab unlocked — spend Infinity Points on upgrades.');
     }
     if (Engine.hasUpg(state, '1;1')) {
-      if (markSeen('gensSeen')) {
-        hooks.toast('Generators online — they build Generator Power, which boosts every ring’s mult gain.');
-      }
+      fireUnlock('gensSeen', 'Generators online — they build Generator Power, which boosts every ring’s mult gain.');
     }
     var auto = Engine.autoUnlocked(state);
     if (auto.buy || auto.asc || auto.promote || auto.prestige || auto.infinity) {
-      if (markSeen('autoSeen')) {
-        hooks.toast('Automation unlocked — configure it in ∞ → Auto.');
-      }
+      fireUnlock('autoSeen', 'Automation unlocked — configure it in ∞ → Auto.');
     }
     if (Engine.hasUpg(state, '7;1')) {
-      if (markSeen('icSeen')) {
-        hooks.toast('Infinity Challenges unlocked — beat them for permanent rewards.');
-      }
+      fireUnlock('icSeen', 'Infinity Challenges unlocked — beat them for permanent rewards.');
     }
     if (Engine.canBreak(state)) {
-      if (markSeen('breakSeen')) {
-        hooks.toast('Break Infinity available — score can now pass ' + fmt(Engine.INFINITY_LOG) + '.');
-      }
+      fireUnlock('breakSeen', 'Break Infinity available — score can now pass ' + fmt(Engine.INFINITY_LOG) + '.');
     }
     if (Engine.hasUpg(state, '21;1')) {
-      if (markSeen('starsSeen')) {
-        hooks.toast('Stars unlocked — they make Stardust, which powers Generators.');
-      }
+      fireUnlock('starsSeen', 'Stars unlocked — they make Stardust, which powers Generators.');
     }
   }
 
@@ -3328,6 +3617,1538 @@ if (typeof module !== 'undefined' && module.exports) {
     showAt: showAt,
     hide: hide,
     TIPS: TIPS,
+  };
+})();
+</script>
+<script>// src/guide-goals.js — pure goal/stage engine for the player-guidance
+// feature (spec 2026-09-24-player-guidance-design.md §1, §5). No DOM, no
+// timers; reads only public Engine functions/state. UMD-ish like engine.js:
+// module.exports in Node, window.GuideGoals in browser.
+//
+// Target selectors are defined here as `[data-guide="<name>"]`; Task 3 adds
+// the matching `data-guide` attribute to the DOM in src/ui.js /
+// src/ui-infinity.js. Full list of names used below (add all of these):
+//   red-buy         Red row's Buy button (circles tab) — goals buyRed, unlockOrange
+//   multbar-red     Red chip in the multbar — goal readMult
+//   orange-buy      Orange row's Buy button (circles tab) — goal buyOrange
+//   buy-mode-toggle The 1/10/max buy-mode toggle (circles tab) — goal buyModes
+//   next-locked-row The next locked circle row (circles tab) — goals unlockGreen, unlockWhite
+//   red-ascend      Red row's Ascend button (circles tab) — goal ascendRed
+//   score-box       The score display — goals reachPrestige, infinity
+//   prestige-button The Prestige action button (prestige tab) — goal prestige
+//   p-chip          The P.Mult chip in the multbar — goal reachPromote
+//   promote-card    A Promotion card (promote tab) — goal promote
+//   promote-tab     The Promote tab button — goal promoteAll
+//   inf-tree        The Infinity Upgrade tree (infinity tab, Tree sub-tab) — goals buyGens, automate, unlockIC
+//   inf-gens        The Generators list (infinity tab, Gens sub-tab) — goal buyG2
+//   inf-ics         The Infinity Challenges list (infinity tab, ICs sub-tab) — goals firstIC, allIC
+//   inf-break       The Break Infinity card (infinity tab, ICs sub-tab) — goal breakInf
+//   inf-stars       The Stars panel (infinity tab, Stars sub-tab) — goal stars
+//   inf-header      The Infinity header (IP / infinity count) (infinity tab) — goal finale
+
+const GuideGoals = (() => {
+  // Resolved per call (not captured at script load) so the browser build
+  // picks up window.Engine even if guide-goals.js's <script> tag runs before
+  // ui.js sets it up; Node tests still get the CommonJS module.
+  function E() {
+    return (typeof window !== 'undefined' && window.Engine) ? window.Engine : require('./engine.js');
+  }
+
+  const STAGES = [
+    'revolution', 'prestige', 'promotions', 'infinity',
+    'challenges', 'break', 'stars', 'finale',
+  ];
+
+  function target(sel, tab) {
+    return { sel: '[data-guide="' + sel + '"]', tab: tab || null };
+  }
+
+  function unlockedCount(s, upTo) {
+    let n = 0;
+    for (let i = 0; i < s.circles.length && (upTo == null || i < upTo); i++) {
+      if (s.circles[i].unlocked) n++;
+    }
+    return n;
+  }
+
+  const GOALS = [
+    {
+      id: 'buyRed', stage: 'revolution', coach: true, ack: false,
+      done: (s) => s.circles[0].bought >= 1,
+      progress: (s) => ({ cur: Math.min(1, s.circles[0].bought), max: 1, log: false }),
+      target: target('red-buy', 'circles'),
+    },
+    {
+      id: 'readMult', stage: 'revolution', coach: true, ack: true,
+      done: () => false,
+      progress: () => null,
+      target: target('multbar-red', null),
+    },
+    {
+      id: 'unlockOrange', stage: 'revolution', coach: true, ack: false,
+      done: (s) => s.circles[1].unlocked,
+      progress: (s) => ({ cur: Math.min(5, s.circles[0].bought), max: 5, log: false }),
+      target: target('red-buy', 'circles'),
+    },
+    {
+      id: 'buyOrange', stage: 'revolution', coach: true, ack: false,
+      done: (s) => s.circles[1].level >= 1,
+      progress: () => null,
+      target: target('orange-buy', 'circles'),
+    },
+    {
+      id: 'buyModes', stage: 'revolution', coach: true, ack: true,
+      done: () => false,
+      progress: () => null,
+      target: target('buy-mode-toggle', 'circles'),
+    },
+    {
+      id: 'unlockGreen', stage: 'revolution', coach: false, ack: false,
+      done: (s) => s.circles[3].unlocked,
+      progress: (s) => ({ cur: unlockedCount(s, 4), max: 4, log: false }),
+      target: target('next-locked-row', 'circles'),
+    },
+    {
+      id: 'ascendRed', stage: 'revolution', coach: false, ack: false,
+      done: (s) => s.circles.some((c) => c.ascensions >= 1),
+      progress: (s) => ({ cur: s.circles[0].level, max: E().levelCap(s.circles[0]), log: false }),
+      target: target('red-ascend', 'circles'),
+    },
+    {
+      id: 'reachPrestige', stage: 'prestige', coach: false, ack: false,
+      done: (s) => E().canPrestige(s) || s.stats.prestiges >= 1,
+      progress: (s) => ({ cur: s.scoreLog, max: E().TUNE.prestigeMinLog, log: true }),
+      target: target('score-box', null),
+    },
+    {
+      id: 'prestige', stage: 'prestige', coach: false, ack: false,
+      done: (s) => s.stats.prestiges >= 1,
+      progress: () => null,
+      target: target('prestige-button', 'prestige'),
+    },
+    {
+      id: 'unlockWhite', stage: 'prestige', coach: false, ack: false,
+      done: (s) => s.circles[9].unlocked || s.stats.promotions >= 1,
+      progress: (s) => ({ cur: unlockedCount(s), max: 10, log: false }),
+      target: target('next-locked-row', 'circles'),
+    },
+    {
+      id: 'reachPromote', stage: 'promotions', coach: false, ack: false,
+      done: (s) => E().promoXp(s) > 0 || s.stats.promotions >= 1,
+      progress: (s) => ({
+        cur: Math.log10(Math.max(1, s.pMult)),
+        max: Math.log10(E().TUNE.promoMin),
+        log: true,
+      }),
+      target: target('p-chip', null),
+    },
+    {
+      id: 'promote', stage: 'promotions', coach: false, ack: false,
+      done: (s) => s.stats.promotions >= 1,
+      progress: () => null,
+      target: target('promote-card', 'promote'),
+    },
+    {
+      id: 'promoteAll', stage: 'promotions', coach: false, ack: false,
+      done: (s) => s.promo.every((p) => p >= 1),
+      progress: (s) => ({ cur: s.promo.filter((p) => p >= 1).length, max: 4, log: false }),
+      target: target('promote-tab', 'promote'),
+    },
+    {
+      id: 'infinity', stage: 'infinity', coach: false, ack: false,
+      done: (s) => s.infinities >= 1,
+      progress: (s) => ({ cur: s.scoreLog, max: E().INFINITY_LOG, log: true }),
+      target: target('score-box', null),
+    },
+    {
+      id: 'buyGens', stage: 'infinity', coach: false, ack: false,
+      done: (s) => E().hasUpg(s, '1;1'),
+      progress: () => null,
+      target: target('inf-tree', 'infinity'),
+    },
+    {
+      id: 'buyG2', stage: 'infinity', coach: false, ack: false,
+      done: (s) => s.inf.gens[1].b >= 1,
+      progress: () => null,
+      target: target('inf-gens', 'infinity'),
+    },
+    {
+      id: 'automate', stage: 'infinity', coach: false, ack: false,
+      done: (s) => ['1;1', '2;2', '3;2', '5;3'].every((id) => E().hasUpg(s, id)),
+      progress: (s) => ({
+        cur: ['1;1', '2;2', '3;2', '5;3'].filter((id) => E().hasUpg(s, id)).length,
+        max: 4,
+        log: false,
+      }),
+      target: target('inf-tree', 'infinity'),
+    },
+    {
+      id: 'unlockIC', stage: 'challenges', coach: false, ack: false,
+      done: (s) => E().hasUpg(s, '7;1'),
+      progress: () => null,
+      target: target('inf-tree', 'infinity'),
+    },
+    {
+      id: 'firstIC', stage: 'challenges', coach: false, ack: false,
+      done: (s) => E().icDoneCount(s) >= 1,
+      progress: () => null,
+      target: target('inf-ics', 'infinity'),
+    },
+    {
+      id: 'allIC', stage: 'challenges', coach: false, ack: false,
+      done: (s) => E().icDoneCount(s) === 9,
+      progress: (s) => ({ cur: E().icDoneCount(s), max: 9, log: false }),
+      target: target('inf-ics', 'infinity'),
+    },
+    {
+      id: 'breakInf', stage: 'break', coach: false, ack: false,
+      done: (s) => s.inf.broken,
+      progress: () => null,
+      target: target('inf-break', 'infinity'),
+    },
+    {
+      id: 'stars', stage: 'stars', coach: false, ack: false,
+      done: (s) => s.inf.stars.n >= 1,
+      progress: () => null,
+      target: target('inf-stars', 'infinity'),
+    },
+    {
+      id: 'finale', stage: 'finale', coach: false, ack: false,
+      done: (s) => s.inf.ipLog >= E().INFINITY_LOG,
+      progress: (s) => ({ cur: s.inf.ipLog, max: E().INFINITY_LOG, log: true }),
+      target: target('inf-header', 'infinity'),
+    },
+  ];
+
+  // spec §1 stage-reached predicates
+  const STAGE_PREDICATES = {
+    revolution: () => true,
+    prestige: (s) => s.stats.prestiges >= 1 || E().canPrestige(s),
+    promotions: (s) => s.stats.promotions >= 1 || E().promoXp(s) > 0,
+    infinity: (s) => s.infinities >= 1,
+    challenges: (s) => E().hasUpg(s, '7;1'),
+    break: (s) => s.inf.broken || E().canBreak(s),
+    stars: (s) => E().hasUpg(s, '21;1'),
+    finale: (s) => s.inf.ipLog >= E().INFINITY_LOG,
+  };
+
+  function stageReached(s, stageId) {
+    const pred = STAGE_PREDICATES[stageId];
+    return !!pred && pred(s);
+  }
+
+  function currentStage(s) {
+    for (let i = STAGES.length - 1; i >= 0; i--) {
+      if (stageReached(s, STAGES[i])) return STAGES[i];
+    }
+    return STAGES[0];
+  }
+
+  // Marks a goal and every earlier goal complete once `done(s)` is true for
+  // it (sticky, monotone: resets never regress, advanced saves skip ahead).
+  // Never unmarks anything already true in `doneMap`; always returns a NEW
+  // map.
+  function sync(s, doneMap) {
+    const result = Object.assign({}, doneMap);
+    let mark = false;
+    for (let i = GOALS.length - 1; i >= 0; i--) {
+      const g = GOALS[i];
+      if (g.done(s)) mark = true;
+      if (mark) result[g.id] = true;
+    }
+    return result;
+  }
+
+  function current(doneMap) {
+    for (let i = 0; i < GOALS.length; i++) {
+      if (!doneMap[GOALS[i].id]) return GOALS[i];
+    }
+    return null;
+  }
+
+  // Marks an ack goal (and every earlier goal) complete. Returns a NEW map.
+  function ack(id, doneMap) {
+    const idx = GOALS.findIndex((g) => g.id === id);
+    const result = Object.assign({}, doneMap);
+    for (let i = 0; i <= idx; i++) result[GOALS[i].id] = true;
+    return result;
+  }
+
+  return { GOALS, STAGES, stageReached, currentStage, sync, current, ack };
+})();
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = GuideGoals;
+} else {
+  window.GuideGoals = GuideGoals;
+}
+</script>
+<script>// src/guide-content.js — all player-guidance copy (goals, guide sections,
+// unlock cards, glossary) as plain data. No DOM. Tuned numbers never appear
+// in the copy: they are written as {TOKENS} and filled from Engine at
+// runtime by GuideContent.fill(str, state).
+//
+// Tokens: {INF} Infinity (score cap), {PRESTIGE_MIN} first Prestige score,
+// {PROMO_MIN} P.Mult needed for Promotion XP, {ASC_POWER} current ascension
+// power, {CAP} Red's current level cap, {UNLOCK_AT} levels bought to unlock
+// the next ring.
+//
+// Extra fields beyond the shared contract (all additive):
+//   goals[id].section  — guide section for the goal's "Learn more"
+//   cards[key].section — guide section for the card's "Learn more"
+//   glossary[i].unlock — goal id after which the term is relevant (null = always)
+// A section's / term's `unlock` is the goal whose completion makes it matter:
+// it opens exactly when the first goal pointing at it becomes current.
+(function () {
+  'use strict';
+
+  function engine() {
+    if (typeof module !== 'undefined' && module.exports) return require('./engine.js');
+    return window.Engine;
+  }
+
+  // ---------- objective + journey ----------
+
+  var objective = {
+    title: 'Your goal',
+    body: 'Grow your score to Infinity ({INF}) — then go beyond. Each new layer resets your progress in exchange for permanent power. The goal card under your score always shows your next step.',
+  };
+
+  var stages = {
+    revolution: { name: 'Revolution', blurb: 'Buy levels, grow ring multipliers, unlock all ten rings.' },
+    prestige: { name: 'Prestige', blurb: 'Reset your rings for a lasting P.Mult and P.Exp boost.' },
+    promotions: { name: 'Promotions', blurb: 'Reset P.Mult for four boosts that survive every Prestige.' },
+    infinity: { name: 'Infinity', blurb: 'Reach {INF} score, earn IP, and buy upgrades that are never lost.' },
+    challenges: { name: 'Challenges', blurb: 'Reach Infinity under a handicap for permanent rewards.' },
+    break: { name: 'Break', blurb: 'Let your score pass {INF} and earn far more IP.' },
+    stars: { name: 'Stars', blurb: 'Buy Stars with IP. They make Stardust to power your Generators.' },
+    finale: { name: 'Finale', blurb: 'Reach {INF} IP — the end of this version.' },
+  };
+
+  // ---------- goals (spec §5) ----------
+
+  var goals = {
+    buyRed: {
+      title: 'Buy a Red level',
+      why: 'Levels make Red lap faster. Every lap earns score, and score buys more levels.',
+      coach: 'This is the Red ring. Press Buy to add a level. More levels mean more laps per second, and every lap earns score.',
+      section: 'buying',
+    },
+    readMult: {
+      title: 'Meet your multipliers',
+      why: 'Score per lap is every ring multiplier multiplied together. They grow as rings lap.',
+      coach: 'Red’s ×mult grows a little every lap. Your score per lap is all ring mults multiplied together, so bigger mults mean much more score.',
+      section: 'mults',
+    },
+    unlockOrange: {
+      title: 'Buy {UNLOCK_AT} Red levels to unlock Orange',
+      why: 'A second ring adds its own laps and its own multiplier to every lap’s score.',
+      coach: 'Buying {UNLOCK_AT} levels of a ring unlocks the next one. Red starts at level 5, but only levels you buy count. Keep buying Red.',
+      section: 'buying',
+    },
+    buyOrange: {
+      title: 'Buy an Orange level',
+      why: 'New rings start at level 0 and do not move. One level gets Orange lapping.',
+      coach: 'Orange is unlocked but sits at level 0, so it is not moving. Buy one level to start its laps and grow its multiplier.',
+      section: 'buying',
+    },
+    buyModes: {
+      title: 'Buy in bulk',
+      why: 'Buying many levels at once saves clicks. Max buys everything you can afford.',
+      coach: 'Switch between ×1, ×10 and Max here (key M). Keys 1–9 and 0 buy levels for rings 1 to 10.',
+      section: 'buying',
+    },
+    unlockGreen: {
+      title: 'Buy {UNLOCK_AT} Yellow levels to unlock Green',
+      why: 'Each new ring adds a multiplier to every lap. More rings means much faster growth.',
+      section: 'buying',
+    },
+    ascendRed: {
+      title: 'Get Red to level {CAP}, then Ascend it',
+      why: 'Ascending sends Red back to level 5 but makes its multiplier grow ×{ASC_POWER} faster.',
+      section: 'ascension',
+    },
+    reachPrestige: {
+      title: 'Reach {PRESTIGE_MIN} score',
+      why: 'At {PRESTIGE_MIN} score you can Prestige: reset your rings for a lasting score boost.',
+      section: 'prestige',
+    },
+    prestige: {
+      title: 'Prestige for a lasting ×P.Mult',
+      why: 'P.Mult multiplies every lap’s score and is kept. Your next run grows much faster.',
+      section: 'prestige',
+    },
+    unlockWhite: {
+      title: 'Unlock all 10 rings',
+      why: 'Prestige and rebuild until you can afford every ring. White, the tenth, is the last.',
+      section: 'buying',
+    },
+    reachPromote: {
+      title: 'Grow P.Mult to ×{PROMO_MIN}',
+      why: 'Prestige again and again to raise P.Mult. At ×{PROMO_MIN} you earn Promotion XP.',
+      section: 'promotions',
+    },
+    promote: {
+      title: 'Promote once',
+      why: 'Promoting resets P.Mult but gives a boost that lasts through every Prestige.',
+      section: 'promotions',
+    },
+    promoteAll: {
+      title: 'Level all four Promotions',
+      why: 'Each Promotion boosts something different. Promotion Power boosts the other three.',
+      section: 'promotions',
+    },
+    infinity: {
+      title: 'Reach Infinity ({INF} score)',
+      why: 'Infinity is the first big milestone. It pays Infinity Points (IP) for upgrades you keep.',
+      section: 'infinity',
+    },
+    buyGens: {
+      title: 'Buy your first Infinity Upgrade',
+      why: 'Infinity Generation unlocks Generators and Autobuy. Upgrades are never lost.',
+      section: 'infinity',
+    },
+    buyG2: {
+      title: 'Buy Generator 2',
+      why: 'G2 makes G1s, and G1 makes Generator Power, which speeds up every ring’s multiplier.',
+      section: 'generators',
+    },
+    automate: {
+      title: 'Buy all four automation upgrades',
+      why: 'Autobuy came with Infinity Generation. Buy Auto Ascend, Auto Work and Auto Prestige in the Tree.',
+      section: 'automation',
+    },
+    unlockIC: {
+      title: 'Unlock Infinity Challenges',
+      why: 'Buy the Challenges! upgrade. Each Challenge you beat gives a permanent reward and more IP.',
+      section: 'challenges',
+    },
+    firstIC: {
+      title: 'Complete Challenge 1',
+      why: 'Reach {INF} score under the Challenge’s handicap to earn its reward.',
+      section: 'challenges',
+    },
+    allIC: {
+      title: 'Complete all 9 Challenges',
+      why: 'Each one is harder than the last. Beating all nine unlocks Break Infinity.',
+      section: 'challenges',
+    },
+    breakInf: {
+      title: 'Break Infinity',
+      why: 'Once broken, your score can pass {INF}, and very high scores multiply your IP.',
+      section: 'break',
+    },
+    stars: {
+      title: 'Buy A Falling Star, then a Star',
+      why: 'Climb the Tree to its last upgrade. Stars make Stardust, which boosts Generator Power.',
+      section: 'stars',
+    },
+    finale: {
+      title: 'Reach {INF} IP',
+      why: 'The final goal of this version. IP stops at {INF} — Eternity is coming later.',
+      section: 'finale',
+    },
+  };
+
+  // ---------- guide sections (spec §6) ----------
+
+  var sections = [
+    {
+      id: 'objective',
+      title: 'The goal',
+      unlock: null,
+      body: [
+        'Your goal is to grow your score to Infinity ({INF}), then go beyond it.',
+        'Rev Idle is an idle game. Your rings spin on their own and earn score, even while you are away. You spend score to make them earn faster.',
+        'Every so often you reset for power. Each new layer — Prestige, Promotions, Infinity and more — wipes some progress but gives a lasting boost, so the next climb is much faster.',
+        'The journey strip above shows where you are and what comes next. The goal card always shows your next step.',
+      ],
+      todo: [
+        'Follow the goal card under your score. It always shows one next step.',
+        'Press “Show me” on the card to see where to click.',
+        'When something new unlocks, read its card — it explains what to do.',
+      ],
+    },
+    {
+      id: 'circles',
+      title: 'Rings, laps and score',
+      unlock: null,
+      body: [
+        'Each coloured circle is a ring. A dot orbits each ring. One full trip around is a lap.',
+        'Every lap, on any ring, earns score. Your score is also your money: you spend it to buy levels.',
+        'A ring’s level sets its speed: laps per second = level × the ring’s base speed × speed boosts. Outer rings are slower and cost more, but each one adds a new multiplier.',
+      ],
+      todo: [
+        'Buy levels to make rings lap faster.',
+        'Unlock more rings — each one multiplies your score per lap.',
+        'Hover or long-press any number to see what it means.',
+      ],
+    },
+    {
+      id: 'mults',
+      title: 'Multipliers: how score per lap works',
+      unlock: null,
+      body: [
+        'Every ring has a multiplier (its ×mult). It starts at ×1. Each time that ring finishes a lap, its multiplier grows by its mult gain.',
+        'Score per lap = (every unlocked ring’s multiplier, multiplied together, × P.Mult) ^ exponent. P.Mult and the exponent start at 1 and grow when you Prestige.',
+        'Every lap of any ring earns that full score per lap. So your income = score per lap × laps per second (all rings added together).',
+        'Example: Red ×3, Orange ×2, P.Mult ×10, exponent 1. Score per lap = (3 × 2 × 10)^1 = 60. At 5 laps per second you earn 60 × 5 = 300 score per second.',
+      ],
+      todo: [
+        'Watch the ×mult chips — they are where most of your growth comes from.',
+        'Unlock new rings: a new ring’s multiplier multiplies all the others.',
+        'Keep slow rings leveled too — their laps grow their own multiplier.',
+      ],
+    },
+    {
+      id: 'buying',
+      title: 'Buying levels and unlocking rings',
+      unlock: null,
+      body: [
+        'Press a ring’s Buy button to add levels. Each level costs score, and each one costs a bit more than the last.',
+        'Buy {UNLOCK_AT} levels of a ring to unlock the next ring. Red starts at level 5, but only levels you buy count. A new ring starts at level 0, so buy it a level to get it moving.',
+        'The buy-mode switch picks ×1, ×10 or Max (as many as you can afford). Press M to cycle it. Keys 1–9 and 0 buy for rings 1 to 10.',
+        'Each ring has a level cap ({CAP} for Red right now). At the cap you can Ascend it.',
+      ],
+      todo: [
+        'Buy Red levels until Orange unlocks, then keep going ring by ring.',
+        'Switch to Max once you have lots of score.',
+        'Aim to unlock all 10 rings — White is the last.',
+      ],
+    },
+    {
+      id: 'ascension',
+      title: 'Ascension',
+      unlock: 'unlockOrange',
+      body: [
+        'When a ring reaches its level cap ({CAP} for Red right now), an Ascend button appears on it.',
+        'Ascending sends the ring back to level 5. In return its mult gain per lap is multiplied by your ascension power (×{ASC_POWER} now), its level cap rises by 10, and its levels cost more. The multiplier it has already built is kept.',
+        'Ascensions last until your next Prestige, Promotion or Infinity.',
+      ],
+      todo: [
+        'Max Red’s level, then press Ascend.',
+        'Ascend any ring that hits its cap — faster multiplier growth pays off quickly.',
+        'Rebuy levels afterwards so the ring laps fast again.',
+      ],
+    },
+    {
+      id: 'prestige',
+      title: 'Prestige',
+      unlock: 'ascendRed',
+      body: [
+        'Once your score reaches {PRESTIGE_MIN}, you can Prestige on the Prestige tab.',
+        'Prestige resets your score and every ring (levels, multipliers and ascensions). In return you get P.Mult and P.Exp, based on the score you reached. Your P.Mult becomes the new value only if it’s higher — gains don’t stack. Both only go up and are kept through every Prestige; a later layer resets them.',
+        'P.Mult multiplies every lap’s score. P.Exp is the exponent on your score per lap, so even small increases matter a lot.',
+        'Each Prestige needs at least the score you last prestiged at. The Prestige tab shows what you would gain right now.',
+      ],
+      todo: [
+        'Reach {PRESTIGE_MIN} score, then open the Prestige tab.',
+        'Press Prestige, then press it again to confirm.',
+        'Prestige again when the gain shown is clearly bigger than your current P.Mult.',
+      ],
+    },
+    {
+      id: 'promotions',
+      title: 'Promotions',
+      unlock: 'unlockWhite',
+      body: [
+        'When your P.Mult (or the P.Mult your next Prestige would give) reaches ×{PROMO_MIN}, you earn Promotion XP. More P.Mult means more XP.',
+        'On the Promote tab, promoting sets one of four Promotions to a level equal to your XP. It then resets your rings, score, P.Mult and P.Exp. You can only promote a card whose level is below your XP.',
+        'Mult Gain: bigger mult gain per lap. Lap Speed: every ring laps faster. Ascension Power: each Ascension counts for more. Promotion Power: boosts the other three.',
+        'Promotion levels are kept through every Prestige. They reset at Infinity (a Challenge reward softens this later).',
+      ],
+      todo: [
+        'Push P.Mult to ×{PROMO_MIN} with Prestiges.',
+        'Promote a card, then rebuild with Prestiges to earn more XP.',
+        'Rotate through all four cards so each keeps rising.',
+      ],
+    },
+    {
+      id: 'infinity',
+      title: 'Infinity',
+      unlock: 'reachPromote',
+      body: [
+        'Your score cannot go past Infinity ({INF}). When it gets there, you go Infinite. The first time, a window asks you to confirm. After that it happens by itself (turn on Settings → Confirm each Infinity to be asked each time).',
+        'Going Infinite resets the whole Revolution stage: score, rings, P.Mult, P.Exp and Promotions. You earn Infinity Points (IP) and +1 Infinity (∞) — a later Challenge reward makes it +2.',
+        'IP buys Infinity Upgrades on the ∞ tab’s Tree. Upgrades, IP, Generators you bought and Challenge results are never lost.',
+        'Some upgrades grow stronger the more Infinities you have, so every Infinity helps.',
+      ],
+      todo: [
+        'Reach {INF} score and press Go Infinite.',
+        'Open the ∞ tab and buy Infinity Generation first.',
+        'Keep going Infinite to collect IP for the next upgrades.',
+      ],
+    },
+    {
+      id: 'generators',
+      title: 'Generators',
+      unlock: 'buyGens',
+      body: [
+        'Generators (∞ → Gens) are bought with IP. G1 makes Generator Power (GP). G2 makes G1s, G3 makes G2s, and so on up to G10.',
+        'GP multiplies every ring’s mult gain per lap, so rings build multipliers much faster.',
+        'Each Generator you buy doubles that tier’s output. Bought Generators are kept. GP and the Generators they produce reset at each Infinity, so a run speeds up as it goes.',
+      ],
+      todo: [
+        'Buy G2 as soon as you can afford it.',
+        'Spend spare IP on the cheapest useful Generator or Tree upgrade.',
+        'Watch the GP boost on the ∞ tab grow during a run.',
+      ],
+    },
+    {
+      id: 'automation',
+      title: 'Automation',
+      unlock: 'buyGens',
+      body: [
+        'Tree upgrades unlock automations: Autobuy (buys levels), Auto-Ascend, Auto-Promote and Auto-Prestige. Auto-Infinity comes later and works only after Break.',
+        'Set them up on ∞ → Auto. You can choose which rings they touch and when they act.',
+        'With all four on, each run to Infinity plays itself. That is how the game is meant to be played from here: check in, spend IP, let it run.',
+      ],
+      todo: [
+        'Buy Auto Ascend, Auto Work and Auto Prestige in the Tree.',
+        'Check ∞ → Auto to see each automation is on.',
+        'Let runs play out and come back to spend IP.',
+      ],
+    },
+    {
+      id: 'challenges',
+      title: 'Infinity Challenges',
+      unlock: 'automate',
+      body: [
+        'The Challenges! upgrade unlocks nine Infinity Challenges (∞ → ICs). Each one adds a handicap. You complete it by reaching {INF} score while it is on.',
+        'Starting a Challenge resets your current run with no IP. You can leave at any time, which resets the run again.',
+        'Each completed Challenge gives a permanent reward and raises the IP you earn from every Infinity. You must beat them in order.',
+        'Beating all nine unlocks Break Infinity.',
+      ],
+      todo: [
+        'Buy Challenges! in the Tree, then start Challenge 1.',
+        'Let automation run inside the Challenge — some take hours.',
+        'Replay a finished Challenge later to beat your best time.',
+      ],
+    },
+    {
+      id: 'break',
+      title: 'Break Infinity',
+      unlock: 'allIC',
+      body: [
+        'After all nine Challenges, a Break card appears on ∞ → ICs. Break lets your score pass {INF}. Fix puts the limit back.',
+        'While broken, you choose when to go Infinite with the Go Infinite button. Far past {INF}, your score multiplies the IP you earn, and the bar on the Prestige tab shows the next boost.',
+        'Auto-Infinity works only while broken. Challenges always stop at {INF}.',
+      ],
+      todo: [
+        'Press Break on ∞ → ICs.',
+        'Set up Auto-Infinity once you own it.',
+        'Let runs grow past {INF} for bigger IP, then save up for Stars.',
+      ],
+    },
+    {
+      id: 'stars',
+      title: 'Stars and Stardust',
+      unlock: 'breakInf',
+      body: [
+        'The last Tree upgrade, A Falling Star, unlocks Stars (∞ → Stars). Stars cost IP, and each one costs more.',
+        'Stars make Stardust every second. Stardust boosts Generator Power. You also spend it on four Stardust upgrades, which are kept.',
+        'Stardust itself resets at each Infinity, so spend it before you go Infinite. You can also buy upgrades that raise how much Stardust each Star makes and how strongly it boosts GP.',
+      ],
+      todo: [
+        'Buy A Falling Star, then your first Star.',
+        'Spend Stardust on its upgrades before each Infinity.',
+        'Keep buying Stars as IP allows.',
+      ],
+    },
+    {
+      id: 'finale',
+      title: 'The finale',
+      unlock: 'stars',
+      body: [
+        'The final goal of this version is {INF} IP. IP cannot go past that.',
+        'When you reach it, the game says so. You can keep playing, but the next layer, Eternity, is not in this version yet.',
+      ],
+      todo: [
+        'Keep buying Stars and Stardust upgrades to raise your IP.',
+        'Check in, spend IP, and let automation do the rest.',
+      ],
+    },
+    {
+      id: 'glossary-intro',
+      title: 'Glossary',
+      unlock: null,
+      body: [
+        'Short definitions of every game term. New terms appear here as you unlock them.',
+      ],
+      todo: [
+        'Look up any word you do not recognise.',
+        'Hover or long-press a number in the game for its live value.',
+      ],
+    },
+    {
+      id: 'tips',
+      title: 'Tips and controls',
+      unlock: null,
+      body: [
+        'Hover (or long-press on touch) almost anything to see a tooltip with live numbers.',
+        'Keys: M cycles the buy mode. 1–9 and 0 buy levels for rings 1 to 10. ? or H opens this guide.',
+        'The game keeps running while you are away, for up to several hours, and catches up when you return. Save backups from Settings → Export.',
+      ],
+      todo: [
+        'Use Max buy with the number keys to spend fast.',
+        'Resets like Prestige ask for a second press to confirm.',
+        'Export your save now and then as a backup.',
+      ],
+    },
+  ];
+
+  // ---------- unlock cards (spec §7) ----------
+
+  var cards = {
+    ascendSeen: {
+      title: 'Ascension ready',
+      what: 'A ring hit its level cap. Ascending sends it back to level 5 and makes its multiplier grow ×{ASC_POWER} faster per lap.',
+      why: 'Faster multiplier growth is the main way to push your score higher before Prestige.',
+      todo: 'Press Ascend on the maxed ring, then buy its levels back.',
+      goal: 'ascendRed',
+      section: 'ascension',
+    },
+    prestigeSeen: {
+      title: 'Prestige ready',
+      what: 'Prestige resets your score and rings for P.Mult and P.Exp, which multiply every lap’s score. They only go up and are kept through every Prestige.',
+      why: 'Each Prestige makes the next climb much faster. It is the path toward Infinity.',
+      todo: 'Open the Prestige tab, check the gain, then press Prestige twice to confirm.',
+      goal: 'prestige',
+      section: 'prestige',
+    },
+    promoSeen: {
+      title: 'Promotions ready',
+      what: 'Your P.Mult (or the P.Mult your next Prestige would give) has reached ×{PROMO_MIN}, so you earn Promotion XP. Promoting sets one of four boosts to your XP level.',
+      why: 'Promotions survive every Prestige. They boost mult gain, lap speed, Ascension and each other.',
+      todo: 'Open the Promote tab and promote one card. It resets P.Mult, so Prestige again after.',
+      goal: 'promote',
+      section: 'promotions',
+    },
+    infinitySeen: {
+      title: 'Infinity reached',
+      what: 'Your score hit {INF}, the largest number the game can hold. Going Infinite resets the Revolution stage.',
+      why: 'You earn Infinity Points (IP) to buy upgrades that are never lost.',
+      todo: 'Press Go Infinite, then open the new ∞ tab.',
+      goal: 'infinity',
+      section: 'infinity',
+    },
+    infTabSeen: {
+      title: 'The ∞ tab',
+      what: 'The ∞ tab holds the Infinity Upgrade Tree. Upgrades cost IP and are kept forever.',
+      why: 'These upgrades are how you get stronger from now on — every run to Infinity gets faster.',
+      todo: 'Buy Infinity Generation, the first upgrade in the Tree.',
+      goal: 'buyGens',
+      section: 'infinity',
+    },
+    gensSeen: {
+      title: 'Generators online',
+      what: 'Generators make Generator Power (GP). G1 makes GP; each higher Generator makes the one below it.',
+      why: 'GP multiplies every ring’s mult gain per lap, so runs speed up as they go.',
+      todo: 'Open ∞ → Gens and buy Generator 2 when you can afford it.',
+      goal: 'buyG2',
+      section: 'generators',
+    },
+    autoSeen: {
+      title: 'Automation unlocked',
+      what: 'Some Tree upgrades unlock automations that buy levels, ascend, promote and prestige for you.',
+      why: 'With automation, runs to Infinity play themselves while you spend IP.',
+      todo: 'Check ∞ → Auto, then buy the other automation upgrades in the Tree.',
+      goal: 'automate',
+      section: 'automation',
+    },
+    icSeen: {
+      title: 'Infinity Challenges unlocked',
+      what: 'Nine Challenges each add a handicap. Reach {INF} score while one is on to complete it.',
+      why: 'Each one gives a permanent reward and more IP per Infinity. All nine unlock Break Infinity.',
+      todo: 'Open ∞ → ICs and start Challenge 1.',
+      goal: 'firstIC',
+      section: 'challenges',
+    },
+    breakSeen: {
+      title: 'Break Infinity available',
+      what: 'You beat all nine Challenges. Break lets your score pass {INF}.',
+      why: 'Scores far past {INF} multiply the IP you earn, which you need for Stars.',
+      todo: 'Press Break on ∞ → ICs.',
+      goal: 'breakInf',
+      section: 'break',
+    },
+    starsSeen: {
+      title: 'Stars unlocked',
+      what: 'Stars cost IP and make Stardust every second. Stardust boosts Generator Power and buys its own upgrades.',
+      why: 'Stars drive your IP toward the final goal of {INF} IP.',
+      todo: 'Open ∞ → Stars and buy your first Star. Spend Stardust before each Infinity.',
+      goal: 'stars',
+      section: 'stars',
+    },
+  };
+
+  // ---------- glossary ----------
+
+  var glossary = [
+    { term: 'Ring', unlock: null, def: 'One of the ten coloured circles, Red to White. Each has a dot that orbits it.' },
+    { term: 'Lap', unlock: null, def: 'One full trip of a ring’s dot around its circle. Every lap earns score.' },
+    { term: 'Score', unlock: null, def: 'What laps earn. You spend it on levels, and reaching score targets unlocks resets.' },
+    { term: 'Level', unlock: null, def: 'How fast a ring spins. Laps per second = level × the ring’s base speed × speed boosts.' },
+    { term: 'Level cap', unlock: null, def: 'The highest level a ring can reach ({CAP} for Red right now). Ascending raises it.' },
+    { term: 'Laps per second', unlock: null, def: 'How often a ring completes a lap. Your income adds these up across all rings.' },
+    { term: 'Multiplier', unlock: null, def: 'Each ring’s ×mult. It starts at ×1 and grows every time that ring laps. All ring multipliers multiply together.' },
+    { term: 'Mult gain', unlock: null, def: 'How much a ring’s multiplier grows per lap. Ascension, Promotions and GP raise it.' },
+    { term: 'Score per lap', unlock: null, def: '(All ring multipliers multiplied together × P.Mult) ^ exponent. Every lap of any ring earns this.' },
+    { term: 'Income', unlock: null, def: 'Score per second: score per lap × laps per second across all rings.' },
+    { term: 'Bulk buy', unlock: null, def: 'The ×1 / ×10 / Max switch (key M). Max buys as many levels as you can afford.' },
+    { term: 'Run', unlock: null, def: 'Your progress since the last reset. Each Prestige, Promotion or Infinity starts a new run.' },
+    { term: 'Ascension', unlock: 'unlockOrange', def: 'Resetting a maxed ring to level 5. Its mult gain grows ×ascension power, and its level cap rises by 10.' },
+    { term: 'Ascension power', unlock: 'unlockOrange', def: 'How much each Ascension multiplies a ring’s mult gain (×{ASC_POWER} now).' },
+    { term: 'Prestige', unlock: 'ascendRed', def: 'Resetting score and rings, from {PRESTIGE_MIN} score, for a lasting P.Mult and P.Exp.' },
+    { term: 'P.Mult', unlock: 'ascendRed', def: 'Prestige multiplier. It multiplies score per lap and only goes up through Prestiges. Promotion and Infinity reset it.' },
+    { term: 'P.Exp', unlock: 'ascendRed', def: 'Prestige exponent. Your score per lap is raised to this power, so small gains matter a lot. Promotion and Infinity reset it.' },
+    { term: 'Exponent', unlock: null, def: 'The power score per lap is raised to: P.Exp plus bonuses from later upgrades. It starts at 1.' },
+    { term: 'Promotion', unlock: 'unlockWhite', def: 'One of four boosts (Mult Gain, Lap Speed, Ascension Power, Promotion Power). Promoting resets P.Mult.' },
+    { term: 'Promotion XP', unlock: 'unlockWhite', def: 'Earned once P.Mult reaches ×{PROMO_MIN}. Promoting sets one Promotion’s level to your XP.' },
+    { term: 'Infinity', unlock: 'reachPromote', def: 'The score limit, {INF}. Going Infinite resets the Revolution stage for IP.' },
+    { term: 'IP', unlock: 'reachPromote', def: 'Infinity Points, earned by going Infinite. Spent on upgrades, Generators and Stars. Never lost.' },
+    { term: 'Infinities (∞)', unlock: 'reachPromote', def: 'How many times you have gone Infinite. Several upgrades grow stronger with more.' },
+    { term: 'Infinity Upgrade', unlock: 'reachPromote', def: 'A permanent boost bought with IP on the ∞ tab’s Tree. Most need an upgrade from an earlier column first.' },
+    { term: 'Generator', unlock: 'buyGens', def: 'Bought with IP. G1 makes GP; every higher Generator makes more of the one below it.' },
+    { term: 'GP', unlock: 'buyGens', def: 'Generator Power. It multiplies every ring’s mult gain per lap. Resets each Infinity.' },
+    { term: 'Automation', unlock: 'buyGens', def: 'Upgrades that buy, ascend, promote, prestige and (after Break) go Infinite for you.' },
+    { term: 'Challenge', unlock: 'automate', def: 'An Infinity Challenge: reach {INF} score under a handicap for a permanent reward.' },
+    { term: 'Handicap', unlock: 'automate', def: 'The penalty a Challenge applies while it is running.' },
+    { term: 'Break', unlock: 'allIC', def: 'Break Infinity: lets score pass {INF}. Very high scores multiply the IP you earn.' },
+    { term: 'Star', unlock: 'breakInf', def: 'Bought with IP after the A Falling Star upgrade. Each Star makes Stardust.' },
+    { term: 'Stardust', unlock: 'breakInf', def: 'Made by Stars. Boosts Generator Power and buys Stardust upgrades. Resets each Infinity.' },
+  ];
+
+  // ---------- token filling ----------
+
+  function fmtPlain(E, x) {
+    return x > 0 ? E.fmtLog(Math.log10(x)) : '0';
+  }
+
+  var TOKENS = {
+    INF: function (E) { return E.fmtLog(E.INFINITY_LOG); },
+    PRESTIGE_MIN: function (E) { return E.fmtLog(E.TUNE.prestigeMinLog); },
+    PROMO_MIN: function (E) { return fmtPlain(E, E.TUNE.promoMin); },
+    ASC_POWER: function (E, s) { return fmtPlain(E, E.promoEffects(s).p3); },
+    CAP: function (E, s) { return String(E.levelCap(s.circles[0])); },
+    UNLOCK_AT: function () { return '5'; }, // engine.js buy(): 5 levels bought unlock the next ring
+  };
+
+  function fill(str, s) {
+    var E = engine();
+    var state = s || null;
+    return String(str).replace(/\{([A-Z_]+)\}/g, function (m, key) {
+      var f = TOKENS[key];
+      if (!f) return m;
+      if (!state) state = E.newState();
+      return f(E, state);
+    });
+  }
+
+  var GuideContent = {
+    objective: objective,
+    stages: stages,
+    goals: goals,
+    sections: sections,
+    cards: cards,
+    glossary: glossary,
+    fill: fill,
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = GuideContent;
+  else window.GuideContent = GuideContent;
+})();
+</script>
+<script>// src/guide.js — player-guidance DOM: objective + journey strip, next-goal
+// card, first-minutes coach spotlight, the full ? guide, and unlock cards.
+// Reads GuideGoals (pure goal engine) and GuideContent (copy) as globals;
+// only touches the rest of the app through the hooks passed to Guide.init.
+(function () {
+  'use strict';
+
+  var STORAGE_KEY = 'revidle.guide.v1';
+  var STRONG_PULSE_MS = 3000;
+  var COACH_RETRY_MS = 220;
+
+  var GuideGoals = window.GuideGoals;
+  var GuideContent = window.GuideContent;
+
+  // ---------- hooks (wired by ui.js via Guide.init) ----------
+
+  var hooks = {
+    el: null,
+    toast: function () {},
+    isModalOpen: function () { return null; },
+    showModal: function () {},
+    hideModal: function () {},
+    getState: function () { return null; },
+    setTab: function () {},
+    isCatchingUp: function () { return false; },
+    hadSave: false,
+  };
+
+  // ---------- persisted store ----------
+
+  var store = { done: {}, collapsed: false, enabled: true, cardsSeen: {} };
+
+  function loadStore() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        var obj = JSON.parse(raw);
+        if (obj && typeof obj === 'object') {
+          return {
+            done: obj.done && typeof obj.done === 'object' ? obj.done : {},
+            collapsed: !!obj.collapsed,
+            enabled: obj.enabled !== false,
+            cardsSeen: obj.cardsSeen && typeof obj.cardsSeen === 'object' ? obj.cardsSeen : {},
+          };
+        }
+      }
+    } catch (e) { /* ignore: guidance state is best-effort */ }
+    return { done: {}, collapsed: false, enabled: true, cardsSeen: {} };
+  }
+
+  function saveStore() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); } catch (e) { /* ignore */ }
+  }
+
+  // ---------- small helpers ----------
+
+  function el(tag, attrs, children) {
+    return hooks.el(tag, attrs, children);
+  }
+
+  function fill(str, state) {
+    return GuideContent.fill(str, state);
+  }
+
+  function prefersReducedMotion() {
+    try {
+      return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function coachGoalIds() {
+    return GuideGoals.GOALS.filter(function (g) { return g.coach; }).map(function (g) { return g.id; });
+  }
+
+  // Extracts the data-guide name out of a `[data-guide="name"]` selector.
+  function guideName(sel) {
+    var m = /data-guide="([^"]+)"/.exec(sel);
+    return m ? m[1] : null;
+  }
+
+  var SUBTAB_FOR_NAME = {
+    'inf-tree': 'tree', 'inf-gens': 'gens', 'inf-ics': 'ics', 'inf-break': 'ics', 'inf-stars': 'stars',
+  };
+
+  // Resolves a goal's target element(s) in the live DOM. Never throws: an
+  // unresolved target (wrong tab, sub-tab not built yet) just yields an
+  // empty NodeList/array.
+  function findTargetEls(goal) {
+    var t = goal.target;
+    var nodes = document.querySelectorAll(t.sel);
+    if (nodes.length === 0 && goal.id === 'stars') {
+      // The Stars sub-tab doesn't exist until 'A Falling Star' is bought;
+      // fall back to that Tree upgrade's own card.
+      nodes = document.querySelectorAll('[data-id="21;1"]');
+    }
+    return nodes;
+  }
+
+  // Switches to a goal's tab (and ∞ sub-tab, if any) so its target will be
+  // in the DOM on the next render, then calls back once it should be there.
+  function navigateToTarget(goal, cb) {
+    var t = goal.target;
+    if (t.tab) hooks.setTab(t.tab);
+    var name = guideName(t.sel);
+    var subtab = SUBTAB_FOR_NAME[name];
+    if (subtab && window.InfinityUI && typeof window.InfinityUI.setSubTab === 'function') {
+      window.InfinityUI.setSubTab(subtab);
+    }
+    if (cb) setTimeout(cb, COACH_RETRY_MS);
+  }
+
+  // ---------- goal-complete detection ----------
+
+  var currentGoalId = null;
+  var lastDoneCount = -1;
+
+  function syncGoals(state) {
+    var next = GuideGoals.sync(state, store.done);
+    var nextCount = Object.keys(next).length;
+    var changed = nextCount !== lastDoneCount;
+    store.done = next;
+    lastDoneCount = nextCount;
+    if (changed) saveStore();
+    return changed;
+  }
+
+  // ---------- goal card ----------
+
+  var cardEl = null;
+  var cardGoalId; // undefined = never rendered
+  var cardCollapsed;
+
+  function ensureCard() {
+    if (cardEl) return cardEl;
+    cardEl = el('div', { id: 'guide-card', class: 'guide-card', role: 'complementary', 'aria-label': 'Current goal' });
+    var scorebox = document.getElementById('scorebox');
+    (scorebox || document.body).appendChild(cardEl);
+    return cardEl;
+  }
+
+  function progressText(p) {
+    if (!p) return null;
+    var E = window.Engine;
+    var curTxt = p.log ? E.fmtLog(p.cur) : String(Math.round(p.cur));
+    var maxTxt = p.log ? E.fmtLog(p.max) : String(Math.round(p.max));
+    return curTxt + ' / ' + maxTxt;
+  }
+
+  function progressPct(p) {
+    if (!p || !(p.max > 0)) return 0;
+    return Math.max(0, Math.min(1, p.cur / p.max));
+  }
+
+  function buildCard(state, goal) {
+    var card = ensureCard();
+    card.innerHTML = '';
+    card.hidden = false;
+    card.classList.toggle('collapsed', !!store.collapsed);
+    var content = GuideContent.goals[goal.id];
+    var p = goal.progress(state);
+    var pct = progressPct(p);
+
+    var chevron = el('button', {
+      class: 'guide-card-collapse',
+      'aria-label': store.collapsed ? 'Expand goal card' : 'Collapse goal card',
+      'aria-expanded': String(!store.collapsed),
+      onclick: function () {
+        store.collapsed = !store.collapsed;
+        saveStore();
+        buildCard(hooks.getState(), goal);
+      },
+    }, [store.collapsed ? '▸' : '▾']);
+
+    var head = el('div', { class: 'guide-card-head' }, [
+      chevron,
+      el('div', { class: 'guide-card-title' }, [fill(content.title, state)]),
+      el('div', { class: 'guide-card-pct' }, [p ? Math.round(pct * 100) + '%' : '']),
+    ]);
+    card.appendChild(head);
+
+    if (store.collapsed) return;
+
+    var body = el('div', { class: 'guide-card-body' });
+    if (p) {
+      body.appendChild(el('div', { class: 'progress-bar' }, [
+        el('div', { class: 'progress-fill', style: 'width:' + (pct * 100) + '%' }),
+      ]));
+      body.appendChild(el('div', { class: 'guide-card-progress-text' }, [progressText(p)]));
+    }
+    body.appendChild(el('p', { class: 'help guide-card-why' }, [fill(content.why, state)]));
+    body.appendChild(el('div', { class: 'row' }, [
+      el('button', { class: 'btn', onclick: function () { showMe(goal); } }, ['Show me']),
+      el('button', {
+        class: 'btn',
+        onclick: function () { openGuide(content.section); },
+      }, ['Learn more']),
+    ]));
+    body.appendChild(journeyStrip(state));
+    card.appendChild(body);
+  }
+
+  function renderCard(state) {
+    var card = ensureCard();
+    if (!isEnabled()) { card.hidden = true; return; }
+    card.hidden = false;
+
+    var goal = GuideGoals.current(store.done);
+    currentGoalId = goal ? goal.id : null;
+
+    if (!goal) {
+      if (cardGoalId !== null) {
+        card.innerHTML = '';
+        card.classList.remove('collapsed');
+        card.appendChild(el('div', { class: 'guide-card-done' },
+          ['All goals complete — you’ve reached the end of this version.']));
+        cardGoalId = null;
+        cardCollapsed = store.collapsed;
+      }
+      return;
+    }
+
+    if (goal.id === cardGoalId && store.collapsed === cardCollapsed) {
+      // Patch in place: progress bar/text only, to avoid rebuilding (and
+      // losing focus on) the card every 100ms tick.
+      var p = goal.progress(state);
+      if (p) {
+        var pct = progressPct(p);
+        var fillEl = card.querySelector('.progress-fill');
+        if (fillEl) fillEl.style.width = (pct * 100) + '%';
+        var textEl = card.querySelector('.guide-card-progress-text');
+        if (textEl) textEl.textContent = progressText(p);
+        var pctEl = card.querySelector('.guide-card-pct');
+        if (pctEl) pctEl.textContent = Math.round(pct * 100) + '%';
+      }
+      return;
+    }
+
+    buildCard(state, goal);
+    cardGoalId = goal.id;
+    cardCollapsed = store.collapsed;
+  }
+
+  // ---------- "Show me" / highlight ----------
+
+  var pulsedEls = [];
+  var strongUntil = 0;
+
+  function clearPulse() {
+    pulsedEls.forEach(function (n) {
+      if (n && n.classList) { n.classList.remove('guide-pulse'); n.classList.remove('guide-pulse-strong'); }
+    });
+    pulsedEls = [];
+  }
+
+  function updatePulse(state) {
+    clearPulse();
+    if (!isEnabled()) return;
+    var goal = GuideGoals.current(store.done);
+    if (!goal) return;
+    var strong = Date.now() < strongUntil;
+    var nodes = findTargetEls(goal);
+    Array.prototype.forEach.call(nodes, function (n) {
+      n.classList.add('guide-pulse');
+      if (strong) n.classList.add('guide-pulse-strong');
+      pulsedEls.push(n);
+    });
+  }
+
+  function showMe(goal) {
+    if (hooks.isCatchingUp()) return;
+    navigateToTarget(goal, function () {
+      var nodes = findTargetEls(goal);
+      if (!nodes.length) return; // fail gracefully: nothing to scroll to / pulse
+      strongUntil = Date.now() + STRONG_PULSE_MS;
+      if (typeof nodes[0].scrollIntoView === 'function') {
+        nodes[0].scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+      }
+      updatePulse(hooks.getState());
+      setTimeout(function () { updatePulse(hooks.getState()); }, STRONG_PULSE_MS + 50);
+    });
+  }
+
+  // ---------- journey strip (shared by intro, guide, goal card) ----------
+
+  function journeyStrip(state) {
+    var stageIdx = GuideGoals.STAGES.indexOf(GuideGoals.currentStage(state));
+    var row = el('div', { class: 'guide-journey', role: 'list', 'aria-label': 'Journey' });
+    GuideGoals.STAGES.forEach(function (id, i) {
+      var reached = i <= stageIdx;
+      var isNext = i === stageIdx + 1;
+      var label = (reached || isNext) ? GuideContent.stages[id].name : '???';
+      var cls = 'guide-journey-stage' + (reached ? ' reached' : '') + (i === stageIdx ? ' current' : '');
+      row.appendChild(el('span', { class: cls, role: 'listitem' }, [label]));
+    });
+    return row;
+  }
+
+  // ---------- objective block ----------
+
+  function objectiveBlock(state) {
+    return el('div', { class: 'guide-objective' }, [
+      el('h2', { class: 'modal-title' }, [GuideContent.objective.title]),
+      el('p', { class: 'help' }, [fill(GuideContent.objective.body, state)]),
+    ]);
+  }
+
+  // ---------- intro ----------
+
+  function glyph(color) {
+    return el('span', { class: 'help-glyph', style: 'border-color:' + color + ';box-shadow:0 0 8px 1px ' + color });
+  }
+
+  function beat(color, title, body) {
+    return el('div', { class: 'help-beat' }, [
+      glyph(color),
+      el('div', {}, [
+        el('div', { class: 'help-beat-title' }, [title]),
+        el('div', { class: 'help-beat-body' }, [body]),
+      ]),
+    ]);
+  }
+
+  function showIntro() {
+    if (hooks.isModalOpen()) return;
+    var state = hooks.getState();
+    var panel = el('div', { class: 'modal-panel guide-intro' }, [
+      objectiveBlock(state),
+      journeyStrip(state),
+      beat('#ff3b4f', 'Orbit', 'Every lap of a dot earns score. Faster rings lap more often.'),
+      beat('#ffd93b', 'Buy', 'Levels make a ring faster; buying 5 levels of a ring unlocks the next.'),
+      beat('#2affc6', 'Multiply', 'Each lap also grows that ring’s ×mult; all mults multiply your score per lap.'),
+      beat('#a24dff', 'Reset for power', 'Max a ring to Ascend it. Later, Prestige and Promotions trade progress for permanent boosts. They unlock as you go.'),
+      el('div', { class: 'row help-intro-actions' }, [
+        el('button', {
+          class: 'btn primary',
+          id: 'guide-intro-start',
+          onclick: function () {
+            tutorialActive = true;
+            hooks.hideModal();
+          },
+        }, ['Start tutorial']),
+        el('button', {
+          class: 'btn',
+          onclick: function () {
+            tutorialActive = false;
+            hooks.hideModal();
+          },
+        }, ['Skip']),
+      ]),
+    ]);
+    hooks.showModal(panel);
+    var startBtn = panel.querySelector('#guide-intro-start');
+    if (startBtn) startBtn.focus();
+  }
+
+  // ---------- full guide ----------
+
+  function sectionBlock(sec, state) {
+    var locked = sec.unlock && !store.done[sec.unlock];
+    var wrap = el('div', { class: 'guide-section' + (locked ? ' locked' : ''), id: 'guide-sec-' + sec.id });
+    wrap.appendChild(el('h3', { class: 'guide-section-title' }, [sec.title]));
+    if (locked) {
+      var goalTitle = fill(GuideContent.goals[sec.unlock].title, state);
+      wrap.appendChild(el('p', { class: 'help' }, ['Unlocks when: ' + goalTitle]));
+      return wrap;
+    }
+    sec.body.forEach(function (p) {
+      wrap.appendChild(el('p', { class: 'help' }, [fill(p, state)]));
+    });
+    var todo = el('ul', { class: 'guide-todo' });
+    sec.todo.forEach(function (t) {
+      todo.appendChild(el('li', {}, [fill(t, state)]));
+    });
+    wrap.appendChild(todo);
+    return wrap;
+  }
+
+  function glossaryBlock(state) {
+    var wrap = el('div', { class: 'guide-section', id: 'guide-sec-glossary-terms' });
+    var list = el('dl', { class: 'guide-glossary' });
+    GuideContent.glossary.forEach(function (g) {
+      if (g.unlock && !store.done[g.unlock]) return;
+      list.appendChild(el('dt', {}, [g.term]));
+      list.appendChild(el('dd', {}, [fill(g.def, state)]));
+    });
+    wrap.appendChild(list);
+    return wrap;
+  }
+
+  function openGuide(sectionId) {
+    if (hooks.isModalOpen()) return;
+    var state = hooks.getState();
+    var body = el('div', { class: 'guide-panel-body' });
+    body.appendChild(objectiveBlock(state));
+    body.appendChild(journeyStrip(state));
+
+    var toc = el('nav', { class: 'guide-toc', 'aria-label': 'Guide sections' });
+    GuideContent.sections.forEach(function (sec) {
+      var locked = sec.unlock && !store.done[sec.unlock];
+      toc.appendChild(el('button', {
+        class: 'guide-toc-link' + (locked ? ' locked' : ''),
+        onclick: function () { scrollToSection(sec.id); },
+      }, [sec.title]));
+    });
+    body.appendChild(toc);
+
+    GuideContent.sections.forEach(function (sec) {
+      body.appendChild(sectionBlock(sec, state));
+    });
+    body.appendChild(glossaryBlock(state));
+
+    body.appendChild(el('button', {
+      class: 'btn',
+      onclick: function () { hooks.hideModal(); showIntro(); },
+    }, ['Replay intro']));
+
+    var closeBtn = el('button', { class: 'btn guide-panel-close', 'aria-label': 'Close guide', onclick: hooks.hideModal }, ['×']);
+    var panel = el('div', { class: 'modal-panel guide-panel', role: 'dialog', 'aria-label': 'How to play' }, [
+      el('div', { class: 'guide-panel-head' }, [el('h2', { class: 'modal-title' }, ['Guide']), closeBtn]),
+      body,
+    ]);
+    hooks.showModal(panel);
+    if (sectionId) {
+      setTimeout(function () { scrollToSection(sectionId); }, 0);
+    }
+  }
+
+  function scrollToSection(id) {
+    var node = document.getElementById('guide-sec-' + id);
+    if (node && typeof node.scrollIntoView === 'function') {
+      node.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    }
+  }
+
+  // ---------- unlock cards ----------
+
+  var cardQueue = [];
+
+  function unlock(seenKey) {
+    if (!isEnabled()) return;
+    if (store.cardsSeen[seenKey]) return;
+    store.cardsSeen[seenKey] = true;
+    saveStore();
+    cardQueue.push(seenKey);
+  }
+
+  function showUnlockCard(keys, state) {
+    var first = GuideContent.cards[keys[0]];
+    var items = keys.map(function (k) { return GuideContent.cards[k]; }).filter(Boolean);
+    if (!items.length) return;
+
+    var body = [];
+    items.forEach(function (c, idx) {
+      if (idx > 0) body.push(el('hr', { class: 'guide-card-sep' }));
+      body.push(el('h3', { class: 'guide-section-title' }, [c.title]));
+      body.push(el('p', { class: 'help' }, [fill(c.what, state)]));
+      body.push(el('p', { class: 'help' }, [fill(c.why, state)]));
+      body.push(el('p', { class: 'guide-card-todo' }, [fill(c.todo, state)]));
+    });
+
+    var goal = GuideGoals.GOALS.find(function (g) { return g.id === first.goal; });
+    var actions = [
+      el('button', {
+        class: 'btn',
+        onclick: function () {
+          hooks.hideModal();
+          if (goal) showMe(goal);
+        },
+      }, ['Show me']),
+      el('button', { class: 'btn primary', onclick: hooks.hideModal }, ['Got it']),
+    ];
+
+    var panel = el('div', { class: 'modal-panel guide-unlock-card' },
+      [el('h2', { class: 'modal-title' }, [items.length > 1 ? 'New unlocks' : items[0].title])]
+        .concat(items.length > 1 ? body : body.slice(1))
+        .concat([el('div', { class: 'row' }, actions)]));
+    hooks.showModal(panel);
+  }
+
+  function processCardQueue(state) {
+    if (!isEnabled()) return;
+    if (hooks.isModalOpen() || hooks.isCatchingUp()) return;
+    if (!cardQueue.length) return;
+    var keys = cardQueue.slice();
+    cardQueue = [];
+    showUnlockCard(keys, state);
+  }
+
+  // ---------- first-minutes coach ----------
+
+  var tutorialActive = false;
+  var spotlightEl = null;
+  var spotlightGoalId = null;
+
+  function hideSpotlight() {
+    if (spotlightEl && spotlightEl.parentNode) spotlightEl.parentNode.removeChild(spotlightEl);
+    spotlightEl = null;
+    spotlightGoalId = null;
+  }
+
+  function positionSpotlight(target) {
+    if (!spotlightEl) return;
+    var hole = spotlightEl.querySelector('.guide-spotlight-hole');
+    var pop = spotlightEl.querySelector('.guide-spotlight-pop');
+    var r = target.getBoundingClientRect();
+    var pad = 6;
+    if (hole) {
+      hole.style.left = Math.max(0, r.left - pad) + 'px';
+      hole.style.top = Math.max(0, r.top - pad) + 'px';
+      hole.style.width = (r.width + pad * 2) + 'px';
+      hole.style.height = (r.height + pad * 2) + 'px';
+    }
+    if (pop) {
+      var vw = window.innerWidth;
+      var vh = window.innerHeight;
+      var popRect = pop.getBoundingClientRect();
+      var top = r.bottom + 14;
+      if (top + popRect.height > vh - 8) top = Math.max(8, r.top - popRect.height - 14);
+      var left = Math.min(Math.max(8, r.left), vw - popRect.width - 8);
+      pop.style.top = Math.round(top) + 'px';
+      pop.style.left = Math.round(left) + 'px';
+    }
+  }
+
+  function ackGoal(id) {
+    store.done = GuideGoals.ack(id, store.done);
+    saveStore();
+    hideSpotlight();
+  }
+
+  function skipTutorial() {
+    var ids = coachGoalIds();
+    var last = ids[ids.length - 1];
+    store.done = GuideGoals.ack(last, store.done);
+    saveStore();
+    tutorialActive = false;
+    hideSpotlight();
+  }
+
+  function showSpotlight(goal, state) {
+    hideSpotlight();
+    spotlightGoalId = goal.id;
+    var content = GuideContent.goals[goal.id];
+    var popKids = [
+      el('div', { class: 'guide-spotlight-title' }, [fill(content.title, state)]),
+      el('div', { class: 'guide-spotlight-text' }, [fill(content.coach, state)]),
+    ];
+    if (goal.ack) {
+      popKids.push(el('div', { class: 'row' }, [
+        el('button', { class: 'btn primary', onclick: function () { ackGoal(goal.id); } }, ['Next']),
+      ]));
+    } else {
+      popKids.push(el('div', { class: 'help guide-spotlight-hint' }, ['Do it to continue']));
+    }
+    popKids.push(el('button', {
+      class: 'btn guide-skip-tutorial',
+      onclick: skipTutorial,
+    }, ['Skip tutorial']));
+
+    var overlay = el('div', { class: 'guide-spotlight-overlay', 'aria-hidden': 'true' }, [
+      el('div', { class: 'guide-spotlight-hole' }),
+      el('div', { class: 'guide-spotlight-pop', role: 'dialog', 'aria-label': 'Tutorial step' }, popKids),
+    ]);
+    document.body.appendChild(overlay);
+    spotlightEl = overlay;
+
+    navigateToTarget(goal, function () {
+      var nodes = findTargetEls(goal);
+      if (!nodes.length || spotlightGoalId !== goal.id) return; // fail gracefully
+      positionSpotlight(nodes[0]);
+    });
+  }
+
+  function runCoach(state) {
+    if (!isEnabled() || !tutorialActive) { hideSpotlight(); return; }
+    if (hooks.isModalOpen() || hooks.isCatchingUp()) { hideSpotlight(); return; }
+    var goal = GuideGoals.current(store.done);
+    if (!goal || !goal.coach) {
+      tutorialActive = false;
+      hideSpotlight();
+      return;
+    }
+    if (spotlightGoalId !== goal.id) {
+      showSpotlight(goal, state);
+    } else {
+      var nodes = findTargetEls(goal);
+      if (nodes.length) {
+        positionSpotlight(nodes[0]);
+      } else {
+        // The player navigated away from the target's tab mid-coach; steer
+        // back to it (spec §3: "coach switches to the needed tab").
+        navigateToTarget(goal, function () {
+          var again = findTargetEls(goal);
+          if (again.length) positionSpotlight(again[0]);
+        });
+      }
+    }
+  }
+
+  // The main loop (and Guide.tick with it) is paused for the whole hidden
+  // period / catch-up run, so a stale spotlight would otherwise sit on top
+  // of the catch-up overlay until ticking resumes; hide it immediately.
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) hideSpotlight();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (spotlightGoalId) { hideSpotlight(); return; }
+    if (hooks.isModalOpen && hooks.isModalOpen() === 'guide') hooks.hideModal();
+  });
+
+  // ---------- settings toggle API ----------
+
+  function isEnabled() {
+    return store.enabled !== false;
+  }
+
+  function setEnabled(v) {
+    store.enabled = !!v;
+    saveStore();
+    if (!store.enabled) {
+      clearPulse();
+      hideSpotlight();
+      tutorialActive = false;
+      cardQueue = [];
+      if (cardEl) cardEl.hidden = true;
+      if (hooks.isModalOpen && hooks.isModalOpen() === 'guide') hooks.hideModal();
+    }
+  }
+
+  function restartTutorial() {
+    var ids = coachGoalIds();
+    ids.forEach(function (id) { delete store.done[id]; });
+    saveStore();
+    lastDoneCount = -1;
+    tutorialActive = true;
+    if (hooks.isModalOpen && hooks.isModalOpen() === 'guide') hooks.hideModal();
+    hooks.setTab('circles');
+  }
+
+  // ---------- public API ----------
+
+  function init(h) {
+    if (h) {
+      for (var k in h) {
+        if (Object.prototype.hasOwnProperty.call(h, k)) hooks[k] = h[k];
+      }
+    }
+    store = loadStore();
+    var s = hooks.getState();
+    if (s) {
+      store.done = GuideGoals.sync(s, store.done);
+      lastDoneCount = Object.keys(store.done).length;
+      var g = GuideGoals.current(store.done);
+      currentGoalId = g ? g.id : null;
+    }
+    // Fresh players (no save at boot) get the coach tutorial by default;
+    // returning players (any save, however early) never get it automatically.
+    tutorialActive = !hooks.hadSave;
+    saveStore();
+  }
+
+  function tick(state) {
+    if (!state) return;
+    var completedId = currentGoalId;
+    var changed = syncGoals(state);
+    var goal = GuideGoals.current(store.done);
+    currentGoalId = goal ? goal.id : null;
+    if (changed && completedId && completedId !== currentGoalId && !hooks.isCatchingUp()) {
+      var doneContent = GuideContent.goals[completedId];
+      if (doneContent) hooks.toast('Goal complete: ' + fill(doneContent.title, state));
+    }
+    renderCard(state);
+    updatePulse(state);
+    runCoach(state);
+    processCardQueue(state);
+  }
+
+  window.Guide = {
+    init: init,
+    tick: tick,
+    showIntro: showIntro,
+    openGuide: openGuide,
+    unlock: unlock,
+    restartTutorial: restartTutorial,
+    isEnabled: isEnabled,
+    setEnabled: setEnabled,
   };
 })();
 </script>
@@ -3407,7 +5228,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function renderHeader(kit, state) {
-    return kit.el('div', { id: 'inf-header', class: 'inf-header' }, [
+    return kit.el('div', { id: 'inf-header', class: 'inf-header', 'data-guide': 'inf-header' }, [
       kit.el('span', { class: 'inf-ip', tabindex: '0', 'data-tip': 'ipHeader' }, [ipLineText(state)]),
       kit.el('span', {}, [' · ']),
       kit.el('span', { class: 'inf-count', tabindex: '0', 'data-tip': 'infCount' }, [infLineText(state)]),
@@ -3552,7 +5373,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function renderTree(kit, state) {
     var cols = columnsOf(Engine.UPGRADES);
     var reveal = revealColumns(state, cols);
-    var wrap = kit.el('div', { class: 'inf-tree' });
+    var wrap = kit.el('div', { class: 'inf-tree', 'data-guide': 'inf-tree' });
     reveal.shown.forEach(function (col) {
       var dimmed = col === reveal.previewCol;
       var grid = kit.el('div', { class: 'iu-grid' });
@@ -3677,7 +5498,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function renderGens(kit, state) {
-    var wrap = kit.el('div', { class: 'inf-gens' });
+    var wrap = kit.el('div', { class: 'inf-gens', 'data-guide': 'inf-gens' });
     wrap.appendChild(kit.el('div', { class: 'stat-line gp-line', tabindex: '0', 'data-tip': 'gpLine' }, [
       kit.el('span', { id: 'gp-line-value' }, [gpLineText(state)]),
     ]));
@@ -3950,7 +5771,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function buildBreakCard(kit, state) {
-    var card = kit.el('div', { class: 'card ic-break-card', 'data-broken': String(state.inf.broken) }, [
+    var card = kit.el('div', { class: 'card ic-break-card', 'data-broken': String(state.inf.broken), 'data-guide': 'inf-break' }, [
       kit.el('div', { class: 'card-title' }, ['Break Infinity']),
     ]);
     var btn = kit.el('button', { class: 'btn full-width', 'data-tip': 'breakToggle', tabindex: '0' }, [state.inf.broken ? 'Fix' : 'Break']);
@@ -4005,7 +5826,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function renderICs(kit, state) {
-    var wrap = kit.el('div', { class: 'inf-ics' });
+    var wrap = kit.el('div', { class: 'inf-ics', 'data-guide': 'inf-ics' });
     if (Engine.canBreak(state)) wrap.appendChild(buildBreakCard(kit, state));
     Engine.CHALLENGES.forEach(function (c) { wrap.appendChild(buildIcCard(kit, state, c)); });
     if (Engine.icDoneCount(state) === 9) {
@@ -4130,7 +5951,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function renderStars(kit, state) {
-    var wrap = kit.el('div', { class: 'inf-stars' });
+    var wrap = kit.el('div', { class: 'inf-stars', 'data-guide': 'inf-stars' });
     wrap.appendChild(kit.el('div', { class: 'stat-line', id: 'star-line', tabindex: '0', 'data-tip': 'sdAmount' }, [
       kit.el('span', { id: 'star-line-value' }, [starLineText(state)]),
     ]));
@@ -4191,9 +6012,22 @@ if (typeof module !== 'undefined' && module.exports) {
     else if (subTab === 'stars') updateStars(body, kit, state);
   }
 
+  // Lets Guide (Task 3) drive the ∞ sub-tab when a goal's target lives in a
+  // specific one (Gens, ICs, Stars, ...). Only sets the in-memory selection;
+  // the next render (kit.markDirty / the outer tab dispatch) picks it up.
+  function setSubTab(id) {
+    if (SUBTABS.some(function (t) { return t.id === id; })) {
+      subTab = id;
+      saveSubTab(id);
+    }
+  }
+  function getSubTab() { return subTab; }
+
   window.InfinityUI = {
     render: render,
     update: update,
+    setSubTab: setSubTab,
+    getSubTab: getSubTab,
   };
 })();
 </script>
@@ -4517,18 +6351,20 @@ if (typeof module !== 'undefined' && module.exports) {
       var c = state.circles[i];
       if (!c.unlocked) continue;
       var def = Engine.CIRCLES[i];
-      var chip = el('span', {
+      var chipAttrs = {
         class: 'chip',
         style: 'color:' + def.color + ';border-color:' + def.color,
         'data-tip': 'circleChip',
         'data-tip-i': String(i),
         tabindex: '0',
-      }, [
+      };
+      if (i === 0) chipAttrs['data-guide'] = 'multbar-red';
+      var chip = el('span', chipAttrs, [
         '\u00D7' + fmt(c.multLog),
       ]);
       frag.appendChild(chip);
     }
-    frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'pMultChip', tabindex: '0' }, ['P \u00D7' + fmt(Math.log10(state.pMult))]));
+    frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'pMultChip', 'data-guide': 'p-chip', tabindex: '0' }, ['P \u00D7' + fmt(Math.log10(state.pMult))]));
     if (state.pExp > 1) {
       frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'pExpChip', tabindex: '0' }, ['^' + state.pExp.toFixed(3)]));
     }
@@ -4579,6 +6415,7 @@ if (typeof module !== 'undefined' && module.exports) {
         'aria-selected': String(t.id === currentTab),
         onclick: function () { location.hash = '#' + t.id; },
       };
+      if (t.id === 'promote') attrs['data-guide'] = 'promote-tab';
       // Only Stats/Settings get the label/icon pair the <420px media query
       // swaps between; other tabs keep a plain text child so that query
       // (which only targets .tab-label/.tab-icon) never touches them.
@@ -4628,7 +6465,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function renderCirclesTab(root) {
     var wrap = el('div', { class: 'tab-body-inner' });
 
-    var modeRow = el('div', { id: 'buy-mode', role: 'group', 'aria-label': 'Buy mode', 'data-tip': 'buyMode' });
+    var modeRow = el('div', { id: 'buy-mode', role: 'group', 'aria-label': 'Buy mode', 'data-tip': 'buyMode', 'data-guide': 'buy-mode-toggle' });
     ['1', '10', 'max'].forEach(function (m) {
       var label = m === 'max' ? 'Max' : '\u00D7' + m;
       var btn = el('button', {
@@ -4653,7 +6490,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (firstLocked > 0) {
       var prevName = Engine.CIRCLES[firstLocked - 1].name;
-      wrap.appendChild(el('div', { class: 'circle-row locked', tabindex: '0', 'data-tip': 'lockedRow' }, [
+      wrap.appendChild(el('div', { class: 'circle-row locked', tabindex: '0', 'data-tip': 'lockedRow', 'data-guide': 'next-locked-row' }, [
         el('div', { class: 'swatch', style: 'color:' + Engine.CIRCLES[firstLocked].color }),
         el('div', { class: 'circle-info' }, [
           el('div', { class: 'circle-name' }, [Engine.CIRCLES[firstLocked].name]),
@@ -4688,7 +6525,10 @@ if (typeof module !== 'undefined' && module.exports) {
     row.appendChild(info);
 
     var actions = el('div', { class: 'circle-actions' });
-    var buyBtn = el('button', { class: 'btn buy-btn', 'data-i': String(i), 'data-tip': 'buyBtn', 'data-tip-i': String(i) });
+    var buyAttrs = { class: 'btn buy-btn', 'data-i': String(i), 'data-tip': 'buyBtn', 'data-tip-i': String(i) };
+    if (i === 0) buyAttrs['data-guide'] = 'red-buy';
+    else if (i === 1) buyAttrs['data-guide'] = 'orange-buy';
+    var buyBtn = el('button', buyAttrs);
     buyBtn.style.setProperty('--circle', def.color);
     buyBtn.addEventListener('click', function () {
       var wasUnlockedNext = state.circles[i + 1] ? state.circles[i + 1].unlocked : true;
@@ -4706,7 +6546,9 @@ if (typeof module !== 'undefined' && module.exports) {
     updateBuyButton(buyBtn, i);
 
     if (Engine.canAscend(state, i)) {
-      var ascendBtn = el('button', { class: 'btn ascend', 'data-tip': 'ascendBtn', 'data-tip-i': String(i) }, ['Ascend']);
+      var ascendAttrs = { class: 'btn ascend', 'data-tip': 'ascendBtn', 'data-tip-i': String(i) };
+      if (i === 0) ascendAttrs['data-guide'] = 'red-ascend';
+      var ascendBtn = el('button', ascendAttrs, ['Ascend']);
       ascendBtn.addEventListener('click', function () {
         if (Engine.ascend(state, i)) {
           toast(def.name + ' ascended');
@@ -4807,7 +6649,7 @@ if (typeof module !== 'undefined' && module.exports) {
       el('span', {}, [pendingPrestigeText()]),
     ]));
 
-    var btn = el('button', { id: 'prestige-btn', class: 'btn primary full-width' });
+    var btn = el('button', { id: 'prestige-btn', class: 'btn primary full-width', 'data-guide': 'prestige-button' });
     btn.disabled = !Engine.canPrestige(state);
     twoStepConfirm(btn, 'Prestige', 'Confirm reset?', function () {
       if (Engine.prestige(state)) {
@@ -4900,7 +6742,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var xp = Engine.promoXp(state);
       var cur = Engine.promoEffects(state)[meta.key];
       var next = effectAt(k, xp);
-      var card = el('div', { class: 'card', 'data-k': String(k), tabindex: '0', 'data-tip': 'promoCard', 'data-tip-i': String(k) }, [
+      var card = el('div', { class: 'card', 'data-k': String(k), tabindex: '0', 'data-tip': 'promoCard', 'data-tip-i': String(k), 'data-guide': 'promote-card' }, [
         el('div', { class: 'card-title' }, [meta.name + ' \u2014 Lv ' + level]),
         el('div', { class: 'stat-line' }, [
           el('span', { class: 'label' }, ['Effect']),
@@ -5040,6 +6882,25 @@ if (typeof module !== 'undefined' && module.exports) {
       }, ['Confirm each Infinity: ' + (state.inf.auto.confirmInfinity ? 'On' : 'Off')]),
     ]));
 
+    if (window.Guide) {
+      wrap.appendChild(el('h2', { class: 'section-title' }, ['Guidance']));
+      wrap.appendChild(el('div', { class: 'row' }, [
+        el('button', {
+          id: 'guide-toggle',
+          class: 'btn toggle',
+          'aria-pressed': String(window.Guide.isEnabled()),
+          onclick: function () {
+            window.Guide.setEnabled(!window.Guide.isEnabled());
+            markDirty();
+          },
+        }, ['Show guidance: ' + (window.Guide.isEnabled() ? 'On' : 'Off')]),
+        el('button', {
+          class: 'btn',
+          onclick: function () { window.Guide.restartTutorial(); },
+        }, ['Restart tutorial']),
+      ]));
+    }
+
     wrap.appendChild(el('h2', { class: 'section-title' }, ['Export']));
     var exportArea = el('textarea', { class: 'save-area', readonly: 'true' });
     exportArea.value = Engine.serialize(state);
@@ -5106,6 +6967,11 @@ if (typeof module !== 'undefined' && module.exports) {
       btn.setAttribute('aria-pressed', String(state.inf.auto.confirmInfinity));
       btn.textContent = 'Confirm each Infinity: ' + (state.inf.auto.confirmInfinity ? 'On' : 'Off');
     }
+    var guideBtn = root.querySelector('#guide-toggle');
+    if (guideBtn && window.Guide) {
+      guideBtn.setAttribute('aria-pressed', String(window.Guide.isEnabled()));
+      guideBtn.textContent = 'Show guidance: ' + (window.Guide.isEnabled() ? 'On' : 'Off');
+    }
   }
 
   // ---------- tab dispatch ----------
@@ -5150,7 +7016,8 @@ if (typeof module !== 'undefined' && module.exports) {
       return;
     }
     if (e.key === '?' || e.key === 'h' || e.key === 'H') {
-      if (Help) Help.showIntro();
+      if (window.Guide) window.Guide.openGuide();
+      else if (Help) Help.showIntro();
       return;
     }
     var digit = e.key;
@@ -5451,6 +7318,7 @@ if (typeof module !== 'undefined' && module.exports) {
       Help.onTick(state);
       Help.refresh();
     }
+    if (window.Guide) window.Guide.tick(state);
   }
 
   // ---------- boot ----------
@@ -5483,7 +7351,7 @@ if (typeof module !== 'undefined' && module.exports) {
       class: 'help-btn',
       'aria-label': 'How to play',
       'data-tip': 'helpBtn',
-      onclick: function () { if (Help) Help.showIntro(); },
+      onclick: function () { if (window.Guide) window.Guide.openGuide(); else if (Help) Help.showIntro(); },
     }, ['?']);
     els.multbar.appendChild(els.multbarChips);
     els.multbar.appendChild(els.helpBtn);
@@ -5493,6 +7361,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (els.stage) els.stage.appendChild(els.icBanner);
 
     els.scorebox = document.getElementById('scorebox');
+    if (els.scorebox) els.scorebox.setAttribute('data-guide', 'score-box');
     els.infinityBtn = el('button', {
       id: 'infinity-btn',
       class: 'btn primary',
@@ -5513,6 +7382,23 @@ if (typeof module !== 'undefined' && module.exports) {
         showModal: function (node) { modalOpen = 'intro'; showModal(node); },
         hideModal: hideModal,
         getState: function () { return state; },
+      });
+    }
+
+    if (window.Guide) {
+      window.Guide.init({
+        el: el,
+        toast: toast,
+        isModalOpen: function () { return modalOpen; },
+        showModal: function (node) { modalOpen = 'guide'; showModal(node); },
+        hideModal: hideModal,
+        getState: function () { return state; },
+        setTab: function (id) {
+          if (currentTab !== id) location.hash = '#' + id;
+          else markDirty();
+        },
+        isCatchingUp: function () { return catchingUp; },
+        hadSave: hadSave,
       });
     }
 

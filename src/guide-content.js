@@ -130,7 +130,7 @@
     },
     automate: {
       title: 'Buy all four automation upgrades',
-      why: 'Buy Auto Ascend, Auto Work and Auto Prestige in the Tree. Then your runs play themselves.',
+      why: 'Autobuy came with Infinity Generation. Buy Auto Ascend, Auto Work and Auto Prestige in the Tree.',
       section: 'automation',
     },
     unlockIC: {
