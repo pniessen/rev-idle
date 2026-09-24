@@ -23,12 +23,14 @@ const template = read('src/template.html');
 const style = read('src/styles.css');
 const engine = read('src/engine.js');
 const render = read('src/render.js');
+const help = read('src/help.js');
 const ui = read('src/ui.js');
 
 const markers = [
   ['/*@STYLE*/', style],
   ['/*@ENGINE*/', engine],
   ['/*@RENDER*/', render],
+  ['/*@HELP*/', help],
   ['/*@UI*/', ui],
 ];
 

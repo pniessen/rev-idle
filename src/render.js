@@ -309,9 +309,35 @@
       drawCoreGlow(cx, cy, minWH, haveUnlocked ? highestColor : '#3b2a55');
     }
 
+    // hitTest(x, y, state): x/y are CSS-pixel coordinates relative to the
+    // canvas. Returns the index of the unlocked ring whose orbit passes
+    // within tolerance of the pointer's distance from centre, else -1.
+    // Reuses orbitRadius so the hit tolerance always matches what's drawn.
+    function hitTest(x, y, state) {
+      var cx = width / 2;
+      var cy = height / 2;
+      var minWH = Math.min(width, height);
+      var dist = Math.hypot(x - cx, y - cy);
+      var circles = (state && state.circles) || null;
+      var spacing = (0.46 * minWH - 0.08 * minWH) / 9;
+      var tolerance = Math.max(8, spacing / 2);
+      var best = -1;
+      var bestDelta = Infinity;
+      for (var i = 0; i < 10; i++) {
+        if (!circles || !circles[i] || !circles[i].unlocked) continue;
+        var r = orbitRadius(i, minWH);
+        var delta = Math.abs(dist - r);
+        if (delta <= tolerance && delta < bestDelta) {
+          bestDelta = delta;
+          best = i;
+        }
+      }
+      return best;
+    }
+
     resize();
 
-    return { draw: draw, resize: resize };
+    return { draw: draw, resize: resize, hitTest: hitTest };
   }
 
   window.Renderer = { create: create };

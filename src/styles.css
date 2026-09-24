@@ -72,11 +72,37 @@ button, input, textarea {
   gap: 8px;
   align-items: center;
   padding: 8px 16px;
-  overflow-x: auto;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
   min-height: 20px;
 }
+
+.multbar-chips {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  overflow-x: auto;
+}
+
+.help-btn {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-weight: 600;
+  line-height: 1;
+  padding: 0;
+}
+
+.help-btn:hover { color: var(--text); border-color: var(--muted); }
 
 .chip {
   flex: none;
@@ -438,4 +464,67 @@ textarea.save-area {
 
 @media (prefers-reduced-motion: reduce) {
   #toast { transition: none; }
+}
+
+/* ---------- tooltip ---------- */
+
+#tip {
+  position: fixed;
+  z-index: 40;
+  left: 0;
+  top: 0;
+  max-width: 260px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+#tip[hidden] { display: none; }
+
+#tip.show { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  #tip { transition: none; }
+}
+
+/* ---------- intro modal beats ---------- */
+
+.help-beat {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.help-glyph {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 2px solid;
+  background: transparent;
+}
+
+.help-beat-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.help-beat-body {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.help-intro-actions {
+  margin-top: 4px;
 }

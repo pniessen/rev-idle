@@ -11,6 +11,7 @@
   var CONFIRM_WINDOW = 3000; // ms
 
   var Engine = window.Engine;
+  var Help = window.Help;
 
   var state = null;
   var renderer = null;
@@ -219,20 +220,26 @@
       var c = state.circles[i];
       if (!c.unlocked) continue;
       var def = Engine.CIRCLES[i];
-      var chip = el('span', { class: 'chip', style: 'color:' + def.color + ';border-color:' + def.color }, [
+      var chip = el('span', {
+        class: 'chip',
+        style: 'color:' + def.color + ';border-color:' + def.color,
+        'data-tip': 'circleChip',
+        'data-tip-i': String(i),
+        tabindex: '0',
+      }, [
         '\u00D7' + fmt(c.multLog),
       ]);
       frag.appendChild(chip);
     }
-    frag.appendChild(el('span', { class: 'chip grey' }, ['P \u00D7' + fmt(Math.log10(state.pMult))]));
+    frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'pMultChip', tabindex: '0' }, ['P \u00D7' + fmt(Math.log10(state.pMult))]));
     if (state.pExp > 1) {
-      frag.appendChild(el('span', { class: 'chip grey' }, ['^' + state.pExp.toFixed(3)]));
+      frag.appendChild(el('span', { class: 'chip grey', 'data-tip': 'pExpChip', tabindex: '0' }, ['^' + state.pExp.toFixed(3)]));
     }
     if (state.infinities > 0) {
       frag.appendChild(el('span', { class: 'chip grey' }, ['\u221E ' + state.infinities]));
     }
-    els.multbar.innerHTML = '';
-    els.multbar.appendChild(frag);
+    els.multbarChips.innerHTML = '';
+    els.multbarChips.appendChild(frag);
   }
 
   // ---------- scorebox ----------
@@ -303,7 +310,7 @@
   function renderCirclesTab(root) {
     var wrap = el('div', { class: 'tab-body-inner' });
 
-    var modeRow = el('div', { id: 'buy-mode', role: 'group', 'aria-label': 'Buy mode' });
+    var modeRow = el('div', { id: 'buy-mode', role: 'group', 'aria-label': 'Buy mode', 'data-tip': 'buyMode' });
     ['1', '10', 'max'].forEach(function (m) {
       var label = m === 'max' ? 'Max' : '\u00D7' + m;
       var btn = el('button', {
@@ -328,7 +335,7 @@
     }
     if (firstLocked > 0) {
       var prevName = Engine.CIRCLES[firstLocked - 1].name;
-      wrap.appendChild(el('div', { class: 'circle-row locked' }, [
+      wrap.appendChild(el('div', { class: 'circle-row locked', tabindex: '0', 'data-tip': 'lockedRow' }, [
         el('div', { class: 'swatch', style: 'color:' + Engine.CIRCLES[firstLocked].color }),
         el('div', { class: 'circle-info' }, [
           el('div', { class: 'circle-name' }, [Engine.CIRCLES[firstLocked].name]),
@@ -355,15 +362,15 @@
     var info = el('div', { class: 'circle-info' }, [
       el('div', { class: 'circle-name', style: 'color:' + def.color }, [def.name]),
       el('div', { class: 'circle-meta' }, [
-        el('span', { class: 'lv' }, ['Lv ' + c.level + '/' + cap]),
-        el('span', { class: 'lps' }, [lps.toFixed(2) + ' laps/s']),
-        el('span', { class: 'gain' }, ['+' + fmt(gainLog) + '/lap']),
+        el('span', { class: 'lv', tabindex: '0', 'data-tip': 'circleLevel', 'data-tip-i': String(i) }, ['Lv ' + c.level + '/' + cap]),
+        el('span', { class: 'lps', tabindex: '0', 'data-tip': 'circleLps', 'data-tip-i': String(i) }, [lps.toFixed(2) + ' laps/s']),
+        el('span', { class: 'gain', tabindex: '0', 'data-tip': 'circleGain', 'data-tip-i': String(i) }, ['+' + fmt(gainLog) + '/lap']),
       ]),
     ]);
     row.appendChild(info);
 
     var actions = el('div', { class: 'circle-actions' });
-    var buyBtn = el('button', { class: 'btn buy-btn', 'data-i': String(i) });
+    var buyBtn = el('button', { class: 'btn buy-btn', 'data-i': String(i), 'data-tip': 'buyBtn', 'data-tip-i': String(i) });
     buyBtn.style.setProperty('--circle', def.color);
     buyBtn.addEventListener('click', function () {
       var wasUnlockedNext = state.circles[i + 1] ? state.circles[i + 1].unlocked : true;
@@ -381,7 +388,7 @@
     updateBuyButton(buyBtn, i);
 
     if (Engine.canAscend(state, i)) {
-      var ascendBtn = el('button', { class: 'btn ascend' }, ['Ascend']);
+      var ascendBtn = el('button', { class: 'btn ascend', 'data-tip': 'ascendBtn', 'data-tip-i': String(i) }, ['Ascend']);
       ascendBtn.addEventListener('click', function () {
         if (Engine.ascend(state, i)) {
           toast(def.name + ' ascended');
@@ -445,22 +452,23 @@
       wrap.appendChild(el('button', {
         id: 'prestige-infinity-btn',
         class: 'btn primary full-width',
+        'data-tip': 'goInfinite',
         onclick: doGoInfinite,
       }, ['Go Infinite']));
     }
 
     var reqLog = Math.max(Engine.TUNE.prestigeMinLog, state.prestigeReqLog);
-    wrap.appendChild(el('div', { id: 'prestige-req', class: 'stat-line' }, [
+    wrap.appendChild(el('div', { id: 'prestige-req', class: 'stat-line', tabindex: '0', 'data-tip': 'prestigeReq' }, [
       el('span', { class: 'label' }, ['Requirement']),
       el('span', {}, ['score \u2265 ' + fmt(reqLog)]),
     ]));
 
-    wrap.appendChild(el('div', { id: 'prestige-current', class: 'stat-line' }, [
+    wrap.appendChild(el('div', { id: 'prestige-current', class: 'stat-line', tabindex: '0', 'data-tip': 'prestigeCurrent' }, [
       el('span', { class: 'label' }, ['Current']),
       el('span', {}, ['\u00D7' + fmt(Math.log10(state.pMult)) + '  ^' + state.pExp.toFixed(3)]),
     ]));
 
-    wrap.appendChild(el('div', { id: 'prestige-pending', class: 'stat-line' }, [
+    wrap.appendChild(el('div', { id: 'prestige-pending', class: 'stat-line', tabindex: '0', 'data-tip': 'prestigePending' }, [
       el('span', { class: 'label' }, ['Pending']),
       el('span', {}, [pendingPrestigeText()]),
     ]));
@@ -506,7 +514,7 @@
   function renderPromoteTab(root) {
     var wrap = el('div', { class: 'tab-body-inner' });
     wrap.appendChild(el('h2', { class: 'section-title' }, ['Promote']));
-    wrap.appendChild(el('div', { id: 'promo-xp', class: 'stat-line' }, [
+    wrap.appendChild(el('div', { id: 'promo-xp', class: 'stat-line', tabindex: '0', 'data-tip': 'promoXp' }, [
       el('span', { class: 'label' }, ['XP available']),
       el('span', {}, [String(Engine.promoXp(state))]),
     ]));
@@ -516,7 +524,7 @@
       var xp = Engine.promoXp(state);
       var cur = Engine.promoEffects(state)[meta.key];
       var next = effectAt(k, xp);
-      var card = el('div', { class: 'card', 'data-k': String(k) }, [
+      var card = el('div', { class: 'card', 'data-k': String(k), tabindex: '0', 'data-tip': 'promoCard', 'data-tip-i': String(k) }, [
         el('div', { class: 'card-title' }, [meta.name + ' \u2014 Lv ' + level]),
         el('div', { class: 'stat-line' }, [
           el('span', { class: 'label' }, ['Effect']),
@@ -695,6 +703,10 @@
       markDirty();
       return;
     }
+    if (e.key === '?' || e.key === 'h' || e.key === 'H') {
+      if (Help) Help.showIntro();
+      return;
+    }
     var digit = e.key;
     var idx = -1;
     if (digit >= '1' && digit <= '9') idx = Number(digit) - 1;
@@ -781,6 +793,10 @@
       updateActiveTabBody();
     }
     checkInfinity();
+    if (Help) {
+      Help.onTick(state);
+      Help.refresh();
+    }
   }
 
   // ---------- boot ----------
@@ -796,18 +812,51 @@
     els.toast = document.getElementById('toast');
     canvas = document.getElementById('orbits');
 
+    if (els.score) {
+      els.score.setAttribute('tabindex', '0');
+      els.score.setAttribute('data-tip', 'score');
+    }
+    if (els.income) {
+      els.income.setAttribute('tabindex', '0');
+      els.income.setAttribute('data-tip', 'income');
+    }
+
+    // The multbar holds a scrollable chip strip plus a fixed "?" help button
+    // at the right end, so the button never scrolls out of view.
+    els.multbar.innerHTML = '';
+    els.multbarChips = el('div', { class: 'multbar-chips' });
+    els.helpBtn = el('button', {
+      class: 'help-btn',
+      'aria-label': 'How to play',
+      'data-tip': 'helpBtn',
+      onclick: function () { if (Help) Help.showIntro(); },
+    }, ['?']);
+    els.multbar.appendChild(els.multbarChips);
+    els.multbar.appendChild(els.helpBtn);
+
     els.scorebox = document.getElementById('scorebox');
     els.infinityBtn = el('button', {
       id: 'infinity-btn',
       class: 'btn primary',
       style: 'display:none',
+      'data-tip': 'goInfinite',
       onclick: doGoInfinite,
     }, ['Go Infinite']);
     if (els.scorebox) els.scorebox.appendChild(els.infinityBtn);
   }
 
-  function init(offlineInfo) {
+  function init(offlineInfo, hadSave) {
     initDom();
+
+    if (Help) {
+      Help.init({
+        toast: toast,
+        isModalOpen: function () { return modalOpen; },
+        showModal: function (node) { modalOpen = 'intro'; showModal(node); },
+        hideModal: hideModal,
+        getState: function () { return state; },
+      });
+    }
 
     if (window.Renderer && typeof window.Renderer.create === 'function') {
       renderer = window.Renderer.create(canvas);
@@ -815,6 +864,8 @@
     window.addEventListener('resize', function () {
       if (renderer) renderer.resize();
     });
+
+    initCanvasHover();
 
     document.addEventListener('keydown', onKeyDown);
     window.addEventListener('hashchange', syncFromHash);
@@ -849,12 +900,63 @@
 
     if (offlineInfo) {
       showOfflineModal(offlineInfo);
+    } else if (Help) {
+      Help.maybeShowIntroOnBoot(hadSave);
     }
 
     lastFrame = 0;
     lastDomUpdate = 0;
     lastAutosave = performance.now();
     rafId = requestAnimationFrame(frame);
+  }
+
+  // ---------- canvas ring hover ----------
+
+  var canvasLongPressTimer = null;
+
+  function canvasTipText(i) {
+    var c = state.circles[i];
+    var def = Engine.CIRCLES[i];
+    var cap = Engine.levelCap(c);
+    var lps = Engine.lapsPerSec(state, i);
+    return def.name + ' · Lv ' + c.level + '/' + cap + ' · ' + lps.toFixed(2) + ' laps/s · ×' + fmt(c.multLog);
+  }
+
+  function handleCanvasPoint(clientX, clientY) {
+    if (!renderer || !canvas || typeof renderer.hitTest !== 'function') return;
+    var rect = canvas.getBoundingClientRect();
+    var i = renderer.hitTest(clientX - rect.left, clientY - rect.top, state);
+    if (i === -1) {
+      if (Help) Help.hide();
+      return;
+    }
+    if (Help) Help.showAt(clientX, clientY, function () { return canvasTipText(i); });
+  }
+
+  function initCanvasHover() {
+    if (!canvas) return;
+    canvas.addEventListener('mousemove', function (e) {
+      handleCanvasPoint(e.clientX, e.clientY);
+    });
+    canvas.addEventListener('mouseleave', function () {
+      if (Help) Help.hide();
+    });
+    canvas.addEventListener('touchstart', function (e) {
+      if (!e.touches || e.touches.length !== 1) return;
+      var touch = e.touches[0];
+      var x = touch.clientX;
+      var y = touch.clientY;
+      clearTimeout(canvasLongPressTimer);
+      canvasLongPressTimer = setTimeout(function () {
+        handleCanvasPoint(x, y);
+      }, 450);
+    }, { passive: true });
+    canvas.addEventListener('touchmove', function () {
+      clearTimeout(canvasLongPressTimer);
+    }, { passive: true });
+    canvas.addEventListener('touchend', function () {
+      clearTimeout(canvasLongPressTimer);
+    }, { passive: true });
   }
 
   function start(data) {
@@ -866,6 +968,8 @@
     if (!state) {
       state = loadFromLocalStorage();
     }
+
+    var hadSave = !!state;
 
     var offlineInfo = null;
     if (state && state.savedAt) {
@@ -880,7 +984,7 @@
 
     if (!state) state = Engine.newState();
 
-    init(offlineInfo);
+    init(offlineInfo, hadSave);
   }
 
   if (window.claude && window.claude.hot && typeof window.claude.hot.snapshot === 'function') {
