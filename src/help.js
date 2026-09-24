@@ -201,8 +201,13 @@
         // Requirement met — the only thing blocking it is IP.
         status = 'Requirement met — not enough IP yet.';
       }
-      var descText = u.desc.charAt(u.desc.length - 1) === '.' ? u.desc : (u.desc + '.');
-      return u.name + ' — ' + descText + ' Cost ' + fmt(Math.log10(u.cost)) + ' IP. ' + status;
+      // Loaded lazily (not cached at module scope) because src/guide-content.js
+      // is inlined after src/help.js in build.mjs's marker order.
+      var GC = window.GuideContent;
+      var plain = GC ? GC.fill(GC.upgradePlain[u.id], s) : '';
+      var plainText = plain && plain.charAt(plain.length - 1) === '.' ? plain : (plain + '.');
+      var exact = u.desc.charAt(u.desc.length - 1) === '.' ? u.desc : (u.desc + '.');
+      return u.name + ' — ' + plainText + ' Exact effect: ' + exact + ' Cost ' + fmt(Math.log10(u.cost)) + ' IP. ' + status;
     },
     gpLine: function (s) {
       return 'Generator Power multiplies every ring’s mult gain per lap by GP^' + Engine.gpExp(s).toFixed(3)

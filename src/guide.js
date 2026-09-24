@@ -300,7 +300,7 @@
       el('button', { class: 'btn', onclick: function () { showMe(goal); } }, ['Show me']),
       el('button', {
         class: 'btn',
-        onclick: function () { openGuide(content.section); },
+        onclick: function () { openGuide(content.topic); },
       }, ['Learn more']),
     ];
     if (goal.ack) {
@@ -313,7 +313,7 @@
       }, ['Got it']));
     }
     body.appendChild(el('div', { class: 'row' }, rowKids));
-    body.appendChild(journeyStrip(state));
+    body.appendChild(journeyLineEl(state));
     card.appendChild(body);
   }
 
@@ -414,28 +414,41 @@
     });
   }
 
-  // ---------- journey strip (shared by intro, guide, goal card) ----------
+  // ---------- journey line (shared by intro, guide overview, goal card) ----------
+  // Compact text, e.g. "Revolution ✓ → Prestige → …": reached stages get a
+  // checkmark, then the next stage (no checkmark), then an ellipsis if more
+  // remain. No "???" pills — nothing after the next stage is named.
 
-  function journeyStrip(state) {
+  function journeyLine(state) {
     var stageIdx = GuideGoals.STAGES.indexOf(GuideGoals.currentStage(state));
-    var row = el('div', { class: 'guide-journey', role: 'list', 'aria-label': 'Journey' });
+    var parts = [];
     GuideGoals.STAGES.forEach(function (id, i) {
-      var reached = i <= stageIdx;
-      var isNext = i === stageIdx + 1;
-      var label = (reached || isNext) ? GuideContent.stages[id].name : '???';
-      var cls = 'guide-journey-stage' + (reached ? ' reached' : '') + (i === stageIdx ? ' current' : '');
-      row.appendChild(el('span', { class: cls, role: 'listitem' }, [label]));
+      if (i <= stageIdx) parts.push(GuideContent.stages[id].name + ' ✓');
+      else if (i === stageIdx + 1) parts.push(GuideContent.stages[id].name);
     });
-    return row;
+    if (stageIdx + 2 < GuideGoals.STAGES.length) parts.push('…');
+    return parts.join(' → ');
   }
 
-  // ---------- objective block ----------
+  function journeyLineEl(state) {
+    return el('div', { class: 'guide-journey-line', role: 'note', 'aria-label': 'Journey' }, [journeyLine(state)]);
+  }
 
-  function objectiveBlock(state) {
-    return el('div', { class: 'guide-objective' }, [
-      el('h2', { class: 'modal-title' }, [GuideContent.objective.title]),
-      el('p', { class: 'help' }, [fill(GuideContent.objective.body, state)]),
-    ]);
+  // ---------- rich text (bold specific substrings, no innerHTML) ----------
+
+  function escapeRegExp(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  // Splits `text` on any of `terms` and returns an array of strings/`<strong>`
+  // nodes suitable as `el()` children — used to bold fixed phrases (e.g.
+  // "Infinity Points (IP)") inside otherwise-plain approved copy.
+  function richText(text, terms) {
+    if (!terms || !terms.length) return [text];
+    var re = new RegExp('(' + terms.map(escapeRegExp).join('|') + ')');
+    return text.split(re).filter(function (s) { return s !== ''; }).map(function (part) {
+      return terms.indexOf(part) !== -1 ? el('strong', {}, [part]) : part;
+    });
   }
 
   // ---------- intro ----------
@@ -459,125 +472,248 @@
     closeGuideModal();
   }
 
+  // Bolded per the brief's approved overview wording.
+  var OVERVIEW_BOLD_TERMS = ['Infinity Points (IP)', 'Infinity Upgrades'];
+
+  function objectiveParagraph(state) {
+    var o = GuideContent.overview;
+    return el('p', { class: 'help' },
+      [el('strong', {}, [o.labels.objective + ':']), ' ']
+        .concat(richText(fill(o.objective, state), OVERVIEW_BOLD_TERMS)));
+  }
+
   function showIntro() {
     if (hooks.isModalOpen()) return;
     var state = hooks.getState();
-    var panel = el('div', { class: 'modal-panel guide-intro' }, [
-      objectiveBlock(state),
-      journeyStrip(state),
-      beat('#ff3b4f', 'Orbit', 'Every lap of a dot earns score. Faster rings lap more often.'),
-      beat('#ffd93b', 'Buy', 'Levels make a ring faster; buying 5 levels of a ring unlocks the next.'),
-      beat('#2affc6', 'Multiply', 'Each lap also grows that ring’s ×mult; all mults multiply your score per lap.'),
-      beat('#a24dff', 'Reset for power', 'Max a ring to Ascend it. Later, Prestige and Promotions trade progress for permanent boosts. They unlock as you go.'),
-      el('div', { class: 'row help-intro-actions' }, [
-        el('button', {
-          class: 'btn primary',
-          id: 'guide-intro-start',
-          onclick: function () {
-            tutorialActive = true;
-            closeIntro();
-          },
-        }, ['Start tutorial']),
-        el('button', {
-          class: 'btn',
-          onclick: function () {
-            tutorialActive = false;
-            closeIntro();
-          },
-        }, ['Skip']),
-      ]),
-    ]);
+    var o = GuideContent.overview;
+    var colors = ['#ff3b4f', '#ffd93b', '#2affc6', '#a24dff'];
+    var beats = o.how.map(function (h, i) { return beat(colors[i], h.title, fill(h.body, state)); });
+    var panel = el('div', { class: 'modal-panel guide-intro' },
+      [el('h2', { class: 'modal-title' }, ['How to play']), objectiveParagraph(state)]
+        .concat(beats)
+        .concat([
+          journeyLineEl(state),
+          el('div', { class: 'row help-intro-actions' }, [
+            el('button', {
+              class: 'btn primary',
+              id: 'guide-intro-start',
+              onclick: function () {
+                tutorialActive = true;
+                closeIntro();
+              },
+            }, ['Start tutorial']),
+            el('button', {
+              class: 'btn',
+              onclick: function () {
+                tutorialActive = false;
+                closeIntro();
+              },
+            }, ['Skip']),
+          ]),
+        ]));
     hooks.showModal(panel);
     releaseModalFocus = trapFocus(panel);
   }
 
-  // ---------- full guide ----------
+  // ---------- full guide (Guide v2: compact index + one topic at a time) ----------
 
-  function sectionBlock(sec, state) {
-    var locked = sec.unlock && !store.done[sec.unlock];
-    var wrap = el('div', { class: 'guide-section' + (locked ? ' locked' : ''), id: 'guide-sec-' + sec.id });
-    wrap.appendChild(el('h3', { class: 'guide-section-title' }, [sec.title]));
-    if (locked) {
-      var goalTitle = fill(GuideContent.goals[sec.unlock].title, state);
-      wrap.appendChild(el('p', { class: 'help' }, ['Unlocks when: ' + goalTitle]));
+  // Remembers the last topic shown, for this session only (not persisted):
+  // reopening the guide (including via a deep link with no explicit topic)
+  // returns to where the player left off.
+  var lastTopicId = 'overview';
+
+  var GROUP_ORDER = ['basics', 'resets', 'infinity', 'reference'];
+  var GROUP_LABELS = { basics: 'Basics', resets: 'Resets', infinity: 'Infinity', reference: 'Reference' };
+
+  function visibleTopics() {
+    return GuideContent.topics.filter(function (t) { return !t.unlock || store.done[t.unlock]; });
+  }
+
+  function overviewBlock(state) {
+    var o = GuideContent.overview;
+    var howList = el('ol', { class: 'guide-overview-how' }, o.how.map(function (h) {
+      return el('li', {}, [el('strong', {}, [h.title]), ' ' + fill(h.body, state)]);
+    }));
+    return el('div', { class: 'guide-overview' }, [
+      objectiveParagraph(state),
+      el('div', { class: 'guide-overview-label' }, [o.labels.how]),
+      howList,
+      el('p', { class: 'help' }, [el('strong', {}, [o.labels.shape + ':']), ' ' + fill(o.shape, state)]),
+      el('p', { class: 'help' }, [el('strong', {}, [o.labels.job + ':']), ' ' + fill(o.job, state)]),
+    ]);
+  }
+
+  function rightNowBlock(state) {
+    var wrap = el('div', { class: 'guide-rightnow' }, [el('h3', { class: 'guide-topic-heading' }, ['Right now'])]);
+    var goal = GuideGoals.current(store.done);
+    if (!goal) {
+      wrap.appendChild(el('p', { class: 'help' }, ['All goals complete — you’ve reached the end of this version.']));
+      wrap.appendChild(journeyLineEl(state));
       return wrap;
     }
-    sec.body.forEach(function (p) {
-      wrap.appendChild(el('p', { class: 'help' }, [fill(p, state)]));
-    });
-    var todo = el('ul', { class: 'guide-todo' });
-    sec.todo.forEach(function (t) {
-      todo.appendChild(el('li', {}, [fill(t, state)]));
-    });
-    wrap.appendChild(todo);
+    var content = GuideContent.goals[goal.id];
+    var p = goal.progress(state);
+    wrap.appendChild(el('div', { class: 'guide-rightnow-title' }, [fill(content.title, state)]));
+    if (p) {
+      var pct = progressPct(p);
+      wrap.appendChild(el('div', { class: 'progress-bar' }, [
+        el('div', { class: 'progress-fill', style: 'width:' + (pct * 100) + '%' }),
+      ]));
+      wrap.appendChild(el('div', { class: 'guide-card-progress-text' }, [progressText(p)]));
+    }
+    wrap.appendChild(el('p', { class: 'help' }, [fill(content.why, state)]));
+    wrap.appendChild(el('div', { class: 'row' }, [
+      el('button', { class: 'btn', onclick: function () { showMe(goal); } }, ['Show me']),
+    ]));
+    wrap.appendChild(journeyLineEl(state));
     return wrap;
   }
 
   function glossaryBlock(state) {
-    var wrap = el('div', { class: 'guide-section', id: 'guide-sec-glossary-terms' });
     var list = el('dl', { class: 'guide-glossary' });
     GuideContent.glossary.forEach(function (g) {
       if (g.unlock && !store.done[g.unlock]) return;
       list.appendChild(el('dt', {}, [g.term]));
       list.appendChild(el('dd', {}, [fill(g.def, state)]));
     });
-    wrap.appendChild(list);
-    return wrap;
+    return list;
   }
 
-  function openGuide(sectionId) {
+  // Renders exactly one topic into `pane` (cleared first): title, then
+  // either the special overview/glossary content or the common summary +
+  // "How it works" + "What to do" shape.
+  function renderTopicPane(pane, topicId, state) {
+    pane.innerHTML = '';
+    var t = GuideContent.topics.find(function (x) { return x.id === topicId; }) || GuideContent.topics[0];
+    pane.appendChild(el('h2', { class: 'modal-title guide-topic-title' }, [t.title]));
+    if (t.id === 'overview') {
+      pane.appendChild(overviewBlock(state));
+      pane.appendChild(rightNowBlock(state));
+      return;
+    }
+    if (t.id === 'glossary') {
+      pane.appendChild(el('p', { class: 'help guide-topic-summary' }, [fill(t.summary, state)]));
+      pane.appendChild(glossaryBlock(state));
+      return;
+    }
+    pane.appendChild(el('p', { class: 'help guide-topic-summary' }, [fill(t.summary, state)]));
+    if (t.how.length) {
+      pane.appendChild(el('h3', { class: 'guide-topic-heading' }, ['How it works']));
+      pane.appendChild(el('ul', { class: 'guide-how' }, t.how.map(function (h) {
+        return el('li', {}, [fill(h, state)]);
+      })));
+    }
+    if (t.todo.length) {
+      pane.appendChild(el('h3', { class: 'guide-topic-heading' }, ['What to do']));
+      pane.appendChild(el('ul', { class: 'guide-todo' }, t.todo.map(function (td) {
+        return el('li', {}, [fill(td, state)]);
+      })));
+    }
+  }
+
+  function buildTopicButton(t, activeId, small, onSelect) {
+    var active = t.id === activeId;
+    return el('button', {
+      class: (small ? 'guide-tab' : 'guide-index-btn') + (active ? ' active' : ''),
+      'data-topic-id': t.id,
+      'aria-current': active ? 'true' : 'false',
+      onclick: function () { onSelect(t.id); },
+    }, [t.title]);
+  }
+
+  // Builds the desktop left index (grouped, with group labels) or the
+  // mobile single-row tab strip (flat, no group labels) — same topics, same
+  // order, same "+N more as you play" tail for whatever is hidden.
+  function buildTopicNav(activeId, grouped, onSelect) {
+    var visible = visibleTopics();
+    var hiddenCount = GuideContent.topics.length - visible.length;
+    var moreNode = hiddenCount > 0
+      ? el('div', { class: grouped ? 'guide-index-more' : 'guide-index-more guide-tabs-more' },
+        ['+' + hiddenCount + ' more as you play'])
+      : null;
+    var nav;
+    if (grouped) {
+      var kids = [];
+      GROUP_ORDER.forEach(function (g) {
+        var inGroup = visible.filter(function (t) { return t.group === g; });
+        if (!inGroup.length) return;
+        kids.push(el('div', { class: 'guide-index-group-label' }, [GROUP_LABELS[g]]));
+        inGroup.forEach(function (t) { kids.push(buildTopicButton(t, activeId, false, onSelect)); });
+      });
+      if (moreNode) kids.push(moreNode);
+      nav = el('nav', { class: 'guide-index', 'aria-label': 'Guide topics' }, kids);
+    } else {
+      var kids2 = visible.map(function (t) { return buildTopicButton(t, activeId, true, onSelect); });
+      if (moreNode) kids2.push(moreNode);
+      nav = el('nav', { class: 'guide-tabs', 'aria-label': 'Guide topics' }, kids2);
+    }
+    return nav;
+  }
+
+  function refreshNavActive(nav, activeId) {
+    Array.prototype.forEach.call(nav.querySelectorAll('[data-topic-id]'), function (b) {
+      var active = b.getAttribute('data-topic-id') === activeId;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-current', active ? 'true' : 'false');
+    });
+  }
+
+  // Left/Right always move between topics; Up/Down do too (spec: "Left/Right
+  // (or Up/Down on desktop)") — both work on either layout, since the topic
+  // order is a single flat list regardless of how it's displayed.
+  function attachTopicArrowNav(nav, getActiveId, onSelect) {
+    nav.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      var ids = visibleTopics().map(function (t) { return t.id; });
+      var idx = ids.indexOf(getActiveId());
+      if (idx === -1) return;
+      var dir = (e.key === 'ArrowLeft' || e.key === 'ArrowUp') ? -1 : 1;
+      var nextIdx = idx + dir;
+      if (nextIdx < 0 || nextIdx >= ids.length) return;
+      e.preventDefault();
+      var nextId = ids[nextIdx];
+      onSelect(nextId);
+      var btn = nav.querySelector('[data-topic-id="' + nextId + '"]');
+      if (btn) btn.focus();
+    });
+  }
+
+  function openGuide(topicId) {
     if (hooks.isModalOpen()) return;
-    var state = hooks.getState();
-    var body = el('div', { class: 'guide-panel-body' });
-    body.appendChild(objectiveBlock(state));
-    body.appendChild(journeyStrip(state));
+    var sheet = isDesktopSheetWidth();
+    var visible = visibleTopics();
+    var activeId = topicId || lastTopicId || 'overview';
+    if (!visible.some(function (t) { return t.id === activeId; })) activeId = 'overview';
+    lastTopicId = activeId;
 
-    var toc = el('nav', { class: 'guide-toc', 'aria-label': 'Guide sections' });
-    GuideContent.sections.forEach(function (sec) {
-      var locked = sec.unlock && !store.done[sec.unlock];
-      toc.appendChild(el('button', {
-        class: 'guide-toc-link' + (locked ? ' locked' : ''),
-        onclick: function () { scrollToSection(sec.id); },
-      }, [sec.title]));
-    });
-    body.appendChild(toc);
+    var contentPane = el('div', { class: 'guide-panel-content' });
+    renderTopicPane(contentPane, activeId, hooks.getState());
 
-    GuideContent.sections.forEach(function (sec) {
-      body.appendChild(sectionBlock(sec, state));
-    });
-    body.appendChild(glossaryBlock(state));
+    function select(id) {
+      if (id === lastTopicId) return;
+      lastTopicId = id;
+      renderTopicPane(contentPane, id, hooks.getState());
+      refreshNavActive(nav, id);
+    }
 
-    body.appendChild(el('button', {
-      class: 'btn',
-      onclick: function () { closeGuideModal(); showIntro(); },
-    }, ['Replay intro']));
+    var nav = buildTopicNav(activeId, sheet, select);
+    attachTopicArrowNav(nav, function () { return lastTopicId; }, select);
 
     var closeBtn = el('button', { class: 'btn guide-panel-close', 'aria-label': 'Close guide', onclick: closeGuideModal }, ['×']);
-    // >= GUIDE_SHEET_BREAKPOINT: right-hand side sheet (spec §4). Below it:
-    // the existing centered modal, unchanged.
-    var sheet = isDesktopSheetWidth();
+    var head = el('div', { class: 'guide-panel-head' }, [el('h2', { class: 'modal-title' }, ['How to play']), closeBtn]);
+    var layout = el('div', { class: 'guide-panel-layout' + (sheet ? '' : ' guide-panel-layout-mobile') }, [nav, contentPane]);
+
+    // >= GUIDE_SHEET_BREAKPOINT: right-hand side sheet with a left index
+    // (spec §1). Below it: a centered modal with one sticky tab row.
     var panel = el('div', {
       class: 'modal-panel guide-panel' + (sheet ? ' guide-panel-sheet' : ''),
       role: 'dialog',
       'aria-label': 'How to play',
-    }, [
-      el('div', { class: 'guide-panel-head' }, [el('h2', { class: 'modal-title' }, ['Guide']), closeBtn]),
-      body,
-    ]);
+    }, [head, layout]);
     hooks.showModal(panel);
     var backdrop = modalBackdropEl();
     if (backdrop) backdrop.classList.toggle('modal-sheet-open', sheet);
     releaseModalFocus = trapFocus(panel);
-    if (sectionId) {
-      setTimeout(function () { scrollToSection(sectionId); }, 0);
-    }
-  }
-
-  function scrollToSection(id) {
-    var node = document.getElementById('guide-sec-' + id);
-    if (node && typeof node.scrollIntoView === 'function') {
-      node.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
-    }
   }
 
   // ---------- unlock cards ----------
@@ -624,7 +760,7 @@
         class: 'btn',
         onclick: function () {
           closeGuideModal();
-          openGuide(first.section);
+          openGuide(first.topic);
         },
       }, ['Learn more']),
       el('button', { class: 'btn primary', onclick: closeGuideModal }, ['Got it']),

@@ -845,30 +845,13 @@ textarea.save-area {
   .guide-pulse, .guide-pulse.guide-pulse-strong { animation: none; box-shadow: 0 0 0 3px rgba(201, 184, 255, 0.55); }
 }
 
-/* ---------- guide: journey strip ---------- */
+/* ---------- guide: journey line ---------- */
 
-.guide-journey {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.guide-journey-stage {
+.guide-journey-line {
   font-family: var(--font-mono);
   font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
   color: var(--muted);
-}
-
-.guide-journey-stage.reached { color: var(--text); border-color: var(--muted); }
-
-.guide-journey-stage.current {
-  color: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 0 8px 1px rgba(201, 184, 255, 0.4);
+  margin-top: 10px;
 }
 
 /* ---------- guide: next-goal card ---------- */
@@ -948,7 +931,7 @@ textarea.save-area {
 
 .guide-card .row { margin-top: 8px; }
 .guide-card .btn { min-height: 40px; padding: 8px 12px; font-size: 12px; }
-.guide-card .guide-journey { margin-top: 10px; }
+.guide-card .guide-journey-line { margin-top: 10px; }
 .guide-card-collapsed-showme { flex: none; white-space: nowrap; }
 .guide-card.collapsed .guide-card-head { min-height: 40px; }
 
@@ -961,9 +944,7 @@ textarea.save-area {
   .guide-card-body { max-height: 22vh; }
 }
 
-/* ---------- guide: intro / full guide panel ---------- */
-
-.guide-objective { margin-bottom: 4px; }
+/* ---------- guide: intro / full guide panel (Guide v2) ---------- */
 
 .guide-panel {
   max-width: 560px;
@@ -990,15 +971,89 @@ textarea.save-area {
   line-height: 1;
 }
 
-.guide-panel-body > * + * { margin-top: 14px; }
+/* ---------- guide: topic index / tab strip ---------- */
 
-.guide-toc {
+.guide-panel-layout {
   display: flex;
-  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 14px;
+  min-height: 0;
+}
+
+/* Desktop (sheet): a narrow left index; content scrolls independently on
+   the right (see .guide-panel-sheet below for the flex sizing). Mobile: a
+   single sticky row of tabs above the content, both stacked vertically. */
+.guide-index {
+  flex: 0 0 170px;
+  width: 170px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.guide-index-group-label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-top: 10px;
+}
+
+.guide-index-group-label:first-child { margin-top: 0; }
+
+.guide-index-btn {
+  text-align: left;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  padding: 8px 10px;
+  min-height: 40px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.guide-index-btn:hover { color: var(--text); border-color: var(--muted); }
+
+.guide-index-btn.active {
+  color: var(--text);
+  border-color: var(--accent);
+  box-shadow: 0 0 8px 1px rgba(201, 184, 255, 0.3);
+}
+
+.guide-index-more {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 8px;
+  padding: 0 2px;
+}
+
+.guide-panel-layout-mobile {
+  flex-direction: column;
+}
+
+.guide-panel-layout-mobile .guide-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel);
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+}
+
+.guide-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
   gap: 6px;
 }
 
-.guide-toc-link {
+.guide-tab {
+  flex: none;
+  white-space: nowrap;
   background: transparent;
   border: 1px solid var(--line);
   color: var(--muted);
@@ -1009,39 +1064,72 @@ textarea.save-area {
   cursor: pointer;
 }
 
-.guide-toc-link:hover { color: var(--text); border-color: var(--muted); }
-.guide-toc-link.locked { opacity: 0.5; }
+.guide-tab.active { color: var(--text); border-color: var(--accent); }
 
-.guide-section-title {
+.guide-tabs-more { flex: none; align-self: center; white-space: nowrap; }
+
+.guide-panel-content { min-width: 0; flex: 1 1 auto; }
+
+/* ---------- guide: one topic's content ---------- */
+
+.guide-topic-title { margin-bottom: 2px; }
+.guide-topic-summary { margin-top: 4px; }
+
+.guide-topic-heading {
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 14px;
-  margin: 0 0 4px;
+  font-size: 13px;
+  margin: 12px 0 0;
 }
 
-.guide-section p.help { margin-top: 6px; }
-
-.guide-section.locked p.help { font-style: italic; }
-
-.guide-todo {
-  margin: 8px 0 0;
+.guide-how, .guide-todo {
+  margin: 6px 0 0;
   padding-left: 18px;
+  font-size: 13px;
   color: var(--muted);
-  font-size: 12px;
 }
 
-.guide-todo li { margin-top: 4px; }
+.guide-how li, .guide-todo li { margin-top: 4px; }
 
-.guide-glossary {
-  margin: 0;
-  font-size: 12px;
+.guide-overview-label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+  margin-top: 12px;
 }
+
+.guide-overview-how {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.guide-overview-how li { margin-top: 6px; }
+
+.guide-rightnow {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.guide-rightnow-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.guide-glossary { margin: 0; font-size: 12px; }
 
 .guide-glossary dt {
   font-family: var(--font-display);
   font-weight: 600;
   color: var(--text);
   margin-top: 8px;
+}
+
+.guide-glossary dd {
+  margin: 2px 0 0;
+  color: var(--muted);
 }
 
 /* ---------- guide: right side sheet (desktop, >= 820px) ---------- */
@@ -1059,7 +1147,7 @@ textarea.save-area {
 
 .guide-panel.guide-panel-sheet {
   max-width: none;
-  width: clamp(420px, 32vw, 460px);
+  width: min(640px, calc(100vw - 48px));
   height: 100%;
   max-height: 100%;
   margin: 0;
@@ -1077,8 +1165,13 @@ textarea.save-area {
 
 .guide-panel.guide-panel-sheet .guide-panel-head { flex: none; }
 
-.guide-panel.guide-panel-sheet .guide-panel-body {
+.guide-panel.guide-panel-sheet .guide-panel-layout {
   flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.guide-panel.guide-panel-sheet .guide-panel-content {
   overflow-y: auto;
   min-height: 0;
 }
@@ -1092,16 +1185,18 @@ textarea.save-area {
   .guide-panel.guide-panel-sheet { animation: none; }
 }
 
-.guide-glossary dd {
-  margin: 2px 0 0;
-  color: var(--muted);
-}
-
 /* ---------- guide: unlock explainer cards ---------- */
 
 .guide-unlock-card { max-width: 460px; max-height: 85vh; overflow-y: auto; }
 .guide-card-sep { border: none; border-top: 1px solid var(--line); margin: 12px 0; }
 .guide-card-todo { font-weight: 500; margin-top: 8px; }
+
+.guide-section-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 14px;
+  margin: 0 0 4px;
+}
 
 /* ---------- guide: first-minutes coach spotlight ---------- */
 

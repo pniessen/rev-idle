@@ -5,6 +5,7 @@
   'use strict';
 
   var Engine = window.Engine;
+  var GuideContent = window.GuideContent;
   var STORAGE_KEY = 'revidle.infTab';
 
   var SUBTABS = [
@@ -186,7 +187,7 @@
     var kids = [
       kit.el('div', { class: 'card-title' }, [u.name]),
       kit.el('div', { class: 'iu-cost' }, [fmt(Math.log10(u.cost)) + ' IP']),
-      kit.el('div', { class: 'iu-effect' }, [u.desc + effectSuffix(u, effect)]),
+      kit.el('div', { class: 'iu-effect' }, [GuideContent.fill(GuideContent.upgradePlain[u.id], state) + effectSuffix(u, effect)]),
     ];
     if (!owned && !reqMet) {
       kids.push(kit.el('div', { class: 'iu-locked' }, [lockedText(cols, u)]));
@@ -265,7 +266,7 @@
 
       var effect = Engine.upgEffect(state, id);
       var effLine = node.querySelector('.iu-effect');
-      if (effLine) effLine.textContent = u.desc + effectSuffix(u, effect);
+      if (effLine) effLine.textContent = GuideContent.fill(GuideContent.upgradePlain[u.id], state) + effectSuffix(u, effect);
 
       var lockedLine = node.querySelector('.iu-locked');
       if (!owned && !reqMet) {

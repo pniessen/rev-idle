@@ -31,7 +31,7 @@ function allStrings(node, out = []) {
   return out;
 }
 const content = () => ({
-  objective: C.objective, overview: C.overview, stages: C.stages, goals: C.goals, topics: C.topics, cards: C.cards,
+  overview: C.overview, stages: C.stages, goals: C.goals, topics: C.topics, cards: C.cards,
   glossary: C.glossary, upgradePlain: C.upgradePlain,
 });
 const topic = (id) => C.topics.find((x) => x.id === id);
@@ -45,13 +45,6 @@ function overviewText() {
   const o = C.overview;
   return [o.objective, ...o.how.map((h) => h.title + ' ' + h.body), o.shape, o.job].join(' ');
 }
-
-test('objective has a title and a body that states the Infinity target', () => {
-  assert.ok(nonEmpty(C.objective.title));
-  assert.ok(nonEmpty(C.objective.body));
-  assert.ok(C.objective.body.includes('{INF}'));
-  assert.ok(C.fill(C.objective.body, fresh()).includes(E.fmtLog(E.INFINITY_LOG)));
-});
 
 test('every journey stage has a name and blurb', () => {
   assert.deepEqual(Object.keys(C.stages), STAGES);
@@ -87,10 +80,9 @@ test('coach goals have coach text ≤ 160 chars; others do not', () => {
   }
 });
 
-test('every goal links to a valid guide topic (section kept as a compatibility alias)', () => {
+test('every goal links to a valid guide topic', () => {
   for (const id of GOAL_IDS) {
     assert.ok(TOPIC_IDS.includes(C.goals[id].topic), `${id} → ${C.goals[id].topic}`);
-    assert.equal(C.goals[id].section, C.goals[id].topic, id);
   }
 });
 
@@ -179,17 +171,6 @@ test('mults topic spells out the score formula', () => {
   assert.match(text, /laps per second/i);
 });
 
-test('sections compatibility alias mirrors topics in the old shape', () => {
-  assert.deepEqual(C.sections.map((x) => x.id), TOPIC_IDS);
-  for (const sec of C.sections) {
-    const t = topic(sec.id);
-    assert.equal(sec.title, t.title);
-    assert.equal(sec.unlock, t.unlock);
-    assert.deepEqual(sec.body, [t.summary, ...t.how]);
-    assert.deepEqual(sec.todo, t.todo);
-  }
-});
-
 test('upgradePlain: exactly the 38 upgrade ids, short, filled, formula-free', () => {
   const ids = E.UPGRADES.map((u) => u.id);
   assert.equal(ids.length, 38);
@@ -216,7 +197,6 @@ test('cards: exactly the 10 unlock keys, each complete with a valid goal', () =>
     for (const f of ['title', 'what', 'why', 'todo']) assert.ok(nonEmpty(c[f]), `${k}.${f}`);
     assert.ok(GOAL_IDS.includes(c.goal), `${k}.goal`);
     assert.ok(TOPIC_IDS.includes(c.topic), `${k}.topic`);
-    assert.equal(c.section, c.topic, `${k}.section alias`);
   }
 });
 

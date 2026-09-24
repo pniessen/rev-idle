@@ -12,11 +12,10 @@
 // Shape (Guide v2):
 //   overview            — { labels, objective, how: [{title, body}] ×4, shape, job }
 //   topics[]            — { id, group, title, summary, how[], todo[], unlock }
-//   goals[id].topic     — topic for the goal's "Learn more" (.section = alias)
-//   cards[key].topic    — topic for the card's "Learn more" (.section = alias)
+//   goals[id].topic     — topic for the goal's "Learn more"
+//   cards[key].topic    — topic for the card's "Learn more"
 //   glossary[i].unlock  — goal id after which the term is relevant (null = always)
 //   upgradePlain[id]    — plain-English line for each Engine.UPGRADES id
-//   sections, objective — deprecated, kept only for the pre-v2 UI
 // A topic's / term's `unlock` is the goal whose completion makes it matter:
 // it opens exactly when the first goal pointing at it becomes current.
 (function () {
@@ -27,12 +26,7 @@
     return window.Engine;
   }
 
-  // ---------- objective + journey ----------
-
-  var objective = {
-    title: 'Your goal',
-    body: 'Grow your score to Infinity ({INF}) — then go beyond. Each new layer resets your progress in exchange for permanent power. The goal card under your score always shows your next step.',
-  };
+  // ---------- journey ----------
 
   var stages = {
     revolution: { name: 'Revolution', blurb: 'Buy levels, grow ring multipliers, unlock all ten rings.' },
@@ -389,12 +383,6 @@
     },
   ];
 
-  // Compatibility alias for the pre-v2 UI (src/guide.js): the old section
-  // shape, { id, title, unlock, body: [paragraphs], todo }.
-  var sections = topics.map(function (t) {
-    return { id: t.id, title: t.title, unlock: t.unlock, body: [t.summary].concat(t.how), todo: t.todo.slice() };
-  });
-
   // ---------- plain-English Infinity Upgrade descriptions ----------
   // One line per Engine.UPGRADES id, ≤ 70 chars once filled. The exact
   // formula stays in Engine.UPGRADES[i].desc (shown as the tooltip).
@@ -565,7 +553,7 @@
     { term: 'Stardust', unlock: 'breakInf', def: 'Made by Stars. Boosts Generator Power and buys Stardust upgrades. Resets each Infinity.' },
   ];
 
-  // ---------- token filling ----------
+  // ---------- token filling (continued below) ----------
 
   function fmtPlain(E, x) {
     return x > 0 ? E.fmtLog(Math.log10(x)) : '0';
@@ -593,17 +581,11 @@
     });
   }
 
-  // `section` is kept as a deprecated alias of `topic` for the pre-v2 UI.
-  Object.keys(goals).forEach(function (k) { goals[k].section = goals[k].topic; });
-  Object.keys(cards).forEach(function (k) { cards[k].section = cards[k].topic; });
-
   var GuideContent = {
-    objective: objective, // deprecated: pre-v2 intro/guide header only
     overview: overview,
     stages: stages,
     goals: goals,
     topics: topics,
-    sections: sections, // deprecated alias of topics in the old shape
     upgradePlain: upgradePlain,
     cards: cards,
     glossary: glossary,
