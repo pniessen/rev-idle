@@ -417,3 +417,70 @@ test('Break-era effects: ctf, IP upgrades, 16;3, 20;1, 18;1', () => {
 test('upgEffect reports live values', () => {
   const s = own(E.newState(), '3;1'); close(E.upgEffect(s, '3;1'), 1.1); assert.equal(E.upgEffect(s, '2;2'), null);
 });
+
+const autoState = (...ids) => { const s = own(withGens(E.newState()), ...ids); s.infinities = 1; return s; };
+
+test('autoUnlocked follows upgrades; anyAutoOn', () => {
+  assert.deepEqual(E.autoUnlocked(autoState('1;1', '2;2', '3;2')), { buy: true, asc: true, promote: true, prestige: false, infinity: false });
+  assert.ok(!E.anyAutoOn(E.newState())); assert.ok(E.anyAutoOn(autoState('1;1')));
+  const off = autoState('1;1'); off.inf.auto.buy.on = false; assert.ok(!E.anyAutoOn(off));
+});
+
+test('autobuy: cheapest first until nothing affordable; toggles respected', () => {
+  const s = autoState('1;1'); s.scoreLog = 4; E.autoStep(s, 0.1);
+  for (let i = 0; i < 10; i++) {
+    const c = s.circles[i];
+    if (c.unlocked && c.level < E.levelCap(c)) assert.ok(E.costLog(s, i) > s.scoreLog, `circle ${i} still affordable`);
+  }
+  assert.ok(s.circles[0].level > 5);
+  const t = autoState('1;1'); t.scoreLog = 4; t.inf.auto.buy.circles[0] = false; E.autoStep(t, 0.1); assert.equal(t.circles[0].level, 5);
+  const u = autoState('1;1'); u.scoreLog = 4; u.inf.auto.buy.on = false; E.autoStep(u, 0.1); assert.equal(u.circles[0].level, 5);
+});
+
+test('auto-ascend', () => {
+  const s = autoState('1;1', '2;2'); s.inf.auto.buy.on = false; s.circles[0].level = 100;
+  E.autoStep(s, 0.1); assert.equal(s.circles[0].ascensions, 1);
+  const t = autoState('1;1', '2;2'); t.inf.auto.buy.on = false; t.circles[0].level = 100; t.inf.auto.asc.circles[0] = false;
+  E.autoStep(t, 0.1); assert.equal(t.circles[0].ascensions, 0);
+});
+
+test('auto-promote: order, xFactor, minTime, stall fallback', () => {
+  const s = autoState('1;1', '3;2'); s.inf.auto.buy.on = false; s.pMult = 16 * E.TUNE.promoMin; s.inf.tRun = 0.5;
+  E.autoStep(s, 0.1); assert.deepEqual(s.promo, [0, 0, 0, 0]);
+  s.inf.tRun = 2; E.autoStep(s, 0.1); assert.deepEqual(s.promo, [8, 0, 0, 0]);
+  s.pMult = 16 * E.TUNE.promoMin; s.inf.tRun = 2; E.autoStep(s, 0.1); assert.deepEqual(s.promo, [8, 8, 0, 0]);
+  s.stats.promotions = 4; s.pMult = 16 * E.TUNE.promoMin; s.inf.tRun = 2; s.scoreLog = 5; s.inf.rt = { markLog: 5, markT: 1.5 };
+  E.autoStep(s, 0.1); assert.deepEqual(s.promo, [8, 8, 0, 0]);
+  s.inf.tRun = 40; s.inf.rt = { markLog: 5, markT: 0 };
+  E.autoStep(s, 0.1); assert.deepEqual(s.promo, [8, 8, 8, 0]);
+});
+
+test('auto-prestige thresholds', () => {
+  const mk = () => { const s = autoState('1;1', '4;1', '5;3'); s.inf.auto.buy.on = false; s.inf.tRun = 1; s.scoreLog = 20; return s; };
+  let s = mk(); E.autoStep(s, 0.1); assert.equal(s.stats.prestiges, 1);
+  s = mk(); s.pMult = 100; E.autoStep(s, 0.1); assert.equal(s.stats.prestiges, 1);
+  s = mk(); s.pMult = 1000; s.pExp = 2; E.autoStep(s, 0.1); assert.equal(s.stats.prestiges, 0);
+  s = mk(); s.pMult = 900; s.pExp = 2; s.inf.tRun = 40; s.inf.rt = { markLog: 20, markT: 0 };
+  E.autoStep(s, 0.1); assert.equal(s.stats.prestiges, 1);
+  s = mk(); s.pMult = 1e6; s.inf.auto.prestige.expGain = 0.05; E.autoStep(s, 0.1); assert.equal(s.stats.prestiges, 1);
+  s = mk(); s.inf.tRun = 0.1; E.autoStep(s, 0.1); assert.equal(s.stats.prestiges, 0);
+});
+
+test('stall tracker', () => {
+  const s = autoState('1;1'); s.inf.tRun = 31; s.inf.rt = { markLog: 5, markT: 0 }; s.scoreLog = 5.5;
+  assert.ok(E.isStalled(s)); E.updateStall(s); assert.ok(E.isStalled(s));
+  s.scoreLog = 6.2; E.updateStall(s); assert.equal(s.inf.rt.markLog, 6.2); assert.equal(s.inf.rt.markT, 31); assert.ok(!E.isStalled(s));
+  s.inf.auto.stallSec = 0; s.inf.tRun = 1000; assert.ok(!E.isStalled(s));
+});
+
+test('auto-infinity: broken, owned, thresholds met', () => {
+  const s = autoState('1;1', '15;1'); s.inf.auto.buy.on = false; s.inf.broken = true; s.inf.auto.infinity.on = true;
+  s.scoreLog = 400; s.inf.t = 5; s.inf.auto.infinity.minIpLog = 5;
+  E.autoStep(s, 0.1); assert.equal(s.infinities, 1);
+  s.inf.auto.infinity.minIpLog = 0; s.inf.auto.infinity.minTime = 10; E.autoStep(s, 0.1); assert.equal(s.infinities, 1);
+  s.inf.auto.infinity.minTime = 0; E.autoStep(s, 0.1); assert.equal(s.infinities, 2);
+});
+
+test('tick runs autoStep', () => {
+  const s = autoState('1;1'); s.scoreLog = 4; E.tick(s, 0.001); assert.ok(s.circles[0].level > 5);
+});
