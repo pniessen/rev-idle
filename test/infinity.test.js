@@ -484,3 +484,75 @@ test('auto-infinity: broken, owned, thresholds met', () => {
 test('tick runs autoStep', () => {
   const s = autoState('1;1'); s.scoreLog = 4; E.tick(s, 0.001); assert.ok(s.circles[0].level > 5);
 });
+
+const icReady = (n) => { const s = own(withGens(E.newState()), '7;1'); s.infinities = 5; for (let i = 0; i < n - 1; i++) s.inf.ic.done[i] = true; return s; };
+
+test('challenge gating, start and exit', () => {
+  const s = withGens(E.newState()); assert.ok(!E.canStartChallenge(s, 1));
+  own(s, '7;1'); assert.ok(E.canStartChallenge(s, 1)); assert.ok(!E.canStartChallenge(s, 2));
+  s.scoreLog = 100; s.pMult = 50; s.inf.ipLog = 1;
+  assert.ok(E.startChallenge(s, 1));
+  assert.equal(s.inf.ic.active, 1); assert.equal(s.scoreLog, -Infinity); assert.equal(s.pMult, 1); assert.equal(s.inf.ipLog, 1);
+  assert.ok(!E.canStartChallenge(s, 1));
+  assert.ok(E.exitChallenge(s)); assert.equal(s.inf.ic.active, 0); assert.equal(s.inf.ipLog, 1);
+  assert.equal(E.CHALLENGES.length, 9); assert.equal(E.CHALLENGES[3].name, 'Steep Climbs');
+});
+
+test('IC1: P2/P4 disabled; reward x1.5 on their variable parts', () => {
+  const s = icReady(1); E.startChallenge(s, 1); s.promo = [4, 9, 16, 25];
+  assert.deepEqual(E.mods(s).disabledPromo, [1, 3]); close(E.promoEffects(s).p2, 1);
+  s.inf.ic.active = 0; s.inf.ic.done[0] = true;
+  const m = E.mods(s); close(m.v[1], 1.5); close(m.v[3], 1.5);
+});
+
+test('IC2 asc power /4 then x1.2; IC3 exp -0.4 then +0.03', () => {
+  const s = icReady(2); s.inf.ic.active = 2; close(E.mods(s).ascMult, 0.25);
+  s.inf.ic.active = 0; s.inf.ic.done[1] = true; close(E.mods(s).ascMult, 1.2);
+  s.inf.ic.active = 3; close(E.mods(s).expAdd, -0.4);
+  s.inf.ic.active = 0; s.inf.ic.done[2] = true; close(E.mods(s).expAdd, 0.03);
+});
+
+test('IC4 gains ^0.4; IC5 promotions x0.25 then x1.1', () => {
+  const s = icReady(4); s.inf.ic.active = 4; assert.equal(E.mods(s).gainPow, 0.4);
+  s.inf.ic.active = 5; const a = E.mods(s).v; close(a[0], 0.25); close(a[1], 0.375); close(a[2], 0.25); close(a[3], 0.375);
+  s.inf.ic.active = 0; s.inf.ic.done[4] = true;
+  const v = E.mods(s).v; close(v[0], 1.1); close(v[1], 1.65); close(v[2], 1.1); close(v[3], 1.65);
+});
+
+test('IC6 decays mults; reward doubles generators', () => {
+  const s = icReady(6); s.inf.ic.active = 6; assert.equal(E.mods(s).decay, E.TUNE.ic6Decay);
+  const g = E.genMultLog(s, 0); s.inf.ic.active = 0; s.inf.ic.done[5] = true; close(E.genMultLog(s, 0), g + Math.log10(2));
+});
+
+test('IC7 divides by t^2; reward multiplies by t^0.2', () => {
+  const s = icReady(7); s.inf.t = 100; s.inf.ic.active = 7; close(E.mods(s).prodLog, -4);
+  s.inf.ic.active = 0; s.inf.ic.done[6] = true; close(E.mods(s).prodLog, 0.4);
+});
+
+test('IC8 disables ascension; reward +2 base', () => {
+  const s = icReady(8); s.inf.ic.active = 8; s.circles[0].level = 100; assert.ok(!E.canAscend(s, 0));
+  s.inf.ic.active = 0; s.inf.ic.done[7] = true; assert.equal(E.mods(s).ascBase, 12);
+});
+
+test('IC9 limits to 4 circles; reward doubles Infinities; all done enables Break', () => {
+  const s = icReady(9); s.inf.ic.active = 9; assert.equal(E.mods(s).maxCircles, 4); assert.ok(!E.canBreak(s));
+  s.inf.ic.active = 0; s.inf.ic.done[8] = true; assert.equal(E.infGain(s), 2); assert.ok(E.canBreak(s));
+  assert.ok(E.setBroken(s, true)); assert.ok(s.inf.broken);
+  assert.ok(!E.setBroken(icReady(1), true));
+});
+
+test('completion pays IP and records best time', () => {
+  const s = icReady(1); E.startChallenge(s, 1); s.inf.t = 50; s.scoreLog = E.INFINITY_LOG;
+  E.tick(s, 0.01);
+  assert.ok(s.inf.ic.done[0]); assert.equal(s.inf.ic.active, 0); close(s.inf.ic.best[0], 50.01); assert.equal(s.infinities, 6);
+  close(s.inf.ipLog, Math.log10(2));
+  assert.ok(E.canStartChallenge(s, 1)); // re-runs allowed
+});
+
+test('Break: challenges stay fixed; fixing clamps and triggers Infinity', () => {
+  const c = icReady(9); c.inf.ic.done = Array(9).fill(true); c.inf.broken = true; c.inf.ic.active = 3; c.scoreLog = 400;
+  E.tick(c, 0.01); assert.equal(c.inf.ic.active, 0); assert.equal(c.infinities, 7);
+  const s = icReady(9); s.inf.ic.done = Array(9).fill(true); E.setBroken(s, true);
+  s.scoreLog = 400; E.tick(s, 0.01); assert.equal(s.infinities, 5);
+  E.setBroken(s, false); assert.equal(s.scoreLog, E.INFINITY_LOG); E.tick(s, 0.01); assert.equal(s.infinities, 7);
+});

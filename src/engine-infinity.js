@@ -6,6 +6,7 @@
   E._inf = { LOG2 }; // internal scratch shared by later sections of this file
 
   Object.assign(E.TUNE, { ipBase: 1, breakStartLog: 2772, breakStepLog: 308 });
+  Object.assign(E.TUNE, { ic1Boost: 1.5, ic5Nerf: 0.25, ic5Reward: 1.1, ic6Decay: 0.01, ic4Pow: 0.4 });
   Object.assign(E.TUNE, {
     genRate: 1, gpExp0: 0.666, genSoftcapLog: 1000,
     genCost: [[Math.log10(32), Math.log10(5)], [Math.log10(150), 1], [5, 2], [9, 3], [15, 4], [21, 5], [27, 6], [33, 7], [39, 8], [45, 9]],
@@ -118,6 +119,41 @@
     return T.passiveInfK * infGain(s) / Math.max(1, s.stats.fastestInfinity) * sdU4Mult(s);
   }
 
+  // ===== Infinity Challenges and Break Infinity (spec §8) =====
+  const CHALLENGES = [
+    { n: 1, name: 'Ionized Speed', handicap: 'P2 and P4 disabled', reward: 'P2 and P4 variable parts ×1.5 (permanent)' },
+    { n: 2, name: 'Descent', handicap: 'Ascension power ÷4', reward: 'Ascension power ×1.2 (permanent)' },
+    { n: 3, name: 'The First Root', handicap: 'commonExp −0.4', reward: 'commonExp +0.03 (permanent)' },
+    { n: 4, name: 'Steep Climbs', handicap: 'Prestige and promote gains ^0.4', reward: 'Promotions start at level 1 after every Infinity; IP ×2' },
+    { n: 5, name: 'Fired From Work', handicap: 'All promotion variable parts ×0.25', reward: 'All promotion variable parts ×1.1 (permanent)' },
+    { n: 6, name: 'The Drain', handicap: 'Colour mult logs decay each tick', reward: 'All generators ×2 (permanent)' },
+    { n: 7, name: 'Quadratic Division', handicap: 'Product of mults ÷ t²', reward: 'Product of mults × t^0.2 (permanent)' },
+    { n: 8, name: 'Noscensions', handicap: 'Ascensions disabled', reward: 'Ascension power base +2 (permanent)' },
+    { n: 9, name: 'Isolationism', handicap: 'Only 4 circles can unlock', reward: '∞ gain ×2; unlocks Break Infinity' },
+  ];
+  function canStartChallenge(s, n) {
+    return !!s.inf.upg['7;1'] && s.inf.ic.active === 0 && (n === 1 || s.inf.ic.done[n - 2]);
+  }
+  function startChallenge(s, n) {
+    if (!canStartChallenge(s, n)) return false;
+    resetForChallenge(s);
+    s.inf.ic.active = n;
+    return true;
+  }
+  function exitChallenge(s) {
+    if (!s.inf.ic.active) return false;
+    resetForChallenge(s);
+    s.inf.ic.active = 0;
+    return true;
+  }
+  function canBreak(s) { return s.inf.ic.done.every(Boolean); }
+  function setBroken(s, on) {
+    if (!canBreak(s)) return false;
+    s.inf.broken = !!on;
+    if (!s.inf.broken && s.scoreLog > E.INFINITY_LOG) s.scoreLog = E.INFINITY_LOG;
+    return true;
+  }
+
   // ===== Contributors: MOD_FNS =====
   I.MOD_FNS.push((s, m) => {
     if (hasUpg(s, '3;1')) m.lapMult *= 1.1;
@@ -149,6 +185,26 @@
     }
   });
 
+  I.MOD_FNS.push((s, m) => {
+    const T = E.TUNE;
+    const a = s.inf.ic.active; const d = s.inf.ic.done;
+    if (a === 1) m.disabledPromo = [1, 3];
+    if (d[0]) { m.v[1] *= T.ic1Boost; m.v[3] *= T.ic1Boost; }
+    if (a === 2) m.ascMult *= 0.25;
+    if (d[1]) m.ascMult *= 1.2;
+    if (a === 3) m.expAdd -= 0.4;
+    if (d[2]) m.expAdd += 0.03;
+    if (a === 4) m.gainPow = T.ic4Pow;
+    const vAll = (d[4] ? T.ic5Reward : 1) * (a === 5 ? T.ic5Nerf : 1);
+    if (vAll !== 1) for (let i = 0; i < 4; i++) m.v[i] *= vAll;
+    if (a === 6) m.decay = T.ic6Decay;
+    if (a === 7) m.prodLog -= 2 * Math.log10(Math.max(1, s.inf.t));
+    if (d[6]) m.prodLog += 0.2 * Math.log10(Math.max(1, s.inf.t));
+    if (a === 8) m.noAscend = true;
+    if (d[7]) m.ascBase += 2;
+    if (a === 9) m.maxCircles = 4;
+  });
+
   // ===== Contributors: GEN_FNS (log10 factors) =====
   function log1p(xLog) { return E.logAdd(0, xLog); } // log10(1+x) for x = 10**xLog
   I.GEN_FNS.push((s, k) => {
@@ -176,6 +232,7 @@
     }
     return L;
   });
+  I.GEN_FNS.push((s) => (s.inf.ic.done[5] ? LOG2 : 0));
 
   // ===== Contributors: IP_FNS =====
   I.IP_FNS.push((s) => {
@@ -350,5 +407,6 @@
     goInfinite, resetForChallenge, icDoneCount, ipGainLog, infGain, breakBonusLog,
     GEN_COUNT, genCostLog, canBuyGen, buyGen, genMultLog, genSoftcap, gpExp, gpMultLog,
     UPGRADES, upgById, hasUpg, upgReqMet, canBuyUpgrade, buyUpgrade, upgEffect, ctf, passiveInfRate, sdU4Mult,
+    CHALLENGES, canStartChallenge, startChallenge, exitChallenge, canBreak, setBroken,
   });
 })(typeof module !== 'undefined' && module.exports ? require('./engine.js') : window.Engine);
