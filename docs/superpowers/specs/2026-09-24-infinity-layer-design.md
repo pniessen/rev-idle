@@ -41,7 +41,7 @@ This spec extends [2026-09-23-rev-idle-design.md](2026-09-23-rev-idle-design.md)
 | D16 | Time Flux, macros, the IP Adjuster, leaderboards and achievements are out of scope. | None of these are core to the loop. |
 | D17 | UI: one new main tab, **∞**, which appears after the first Infinity. It holds sub-tabs Tree · Gens · Auto · ICs · Stars, and each sub-tab appears once it is unlocked. | This keeps the main tab bar at 6 items on 400 px screens and leaves room for an Eternity layer switcher later. |
 | D18 | Offline progress runs automation and generators, and can perform any number of fixed or auto Infinities. It uses the same **adaptive step** as the sim (§9.1). The **8 h offline cap stays**. | Otherwise idle play does not work, and a shared step rule keeps the sim honest about offline play. The idle pacing profile (§12) has an 8 h night gap, so a player who checks in by the next morning loses nothing. A longer cap would mostly help players who skip days, which the 1–2 week target does not assume. |
-| D19 | Pacing follows the real game and is **mostly idle** (product owner, revised 2026-09-24). IC4 and IC9 take 3–6 h each; the other challenges take 30–90 min each. First Infinity to the IP-cap finale takes 7–14 days of game time under the idle check-in profile. All targets are in §12. | The layer is meant to be played over weeks, with automation and offline progress doing most of the work. |
+| D19 | Pacing follows the real game and is **mostly idle** (product owner, revised 2026-09-24; challenge timings revised 2026-09-24 per Task 14 rulings). IC4 and IC9 take 3–6 h each; IC1–IC3 take 20–90 min each (floor 15 min); IC5–IC8 are informational, kept faithful to the wiki's handicaps rather than pinned to a duration band. First Infinity to the IP-cap finale takes 7–14 days of game time under the idle check-in profile. All targets are in §12. | The layer is meant to be played over weeks, with automation and offline progress doing most of the work. |
 
 ---
 
@@ -557,7 +557,7 @@ These use the concurrent help system: a `data-tip` key with optional `data-tip-i
 | `stallSec` | A run counts as stalled when score hasn't grown ×10 for this many seconds. Stalls let Auto-Prestige/Promote act early. 0 = off. |
 | `icCard` (n) | Challenge {n}: {handicap}. Reach 1.79e308 to complete. Reward: {reward}, plus +1 to your IP multiplier. Best: {time}. |
 | `icStart` (n) | Starting resets your current run (no IP). You keep upgrades, generators and IP. |
-| `breakToggle` | Broken: score can pass 1.79e308 and you choose when to go Infinite. Every e308 past e2,772 multiplies IP ×10. Fixed: you go Infinite automatically at 1.79e308. |
+| `breakToggle` | Broken: score can pass 1.79e308 and you choose when to go Infinite. Every e74 past e4,100 multiplies IP ×10 (tuned `breakStartLog`/`breakStepLog`, §11). Fixed: you go Infinite automatically at 1.79e308. |
 | `ipBar` | IP bonus ×{10^k}. Next ×10 at e{threshold}. |
 | `starBuy` | Stars produce Stardust: 0.05 × base^stars per second ({rate}/s now). |
 | `starBase` | Star base {base} → {base+0.275}. Raises Stardust per Star. |

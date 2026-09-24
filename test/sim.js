@@ -391,7 +391,6 @@ function handleBreak(s, t, ctx) {
       E.setBroken(s, true);
       if (E.hasUpg(s, '15;1')) s.inf.auto.infinity.on = true;
       ctx.purchased = true;
-      ctx.breakT = t;
     }
     return;
   }
@@ -700,7 +699,6 @@ function runLayerCore(startState, startT, startTInf1, endT, opts) {
     icAttempts: [],
     icReplayIdx: 0,
     dayFirstCheckin: false,
-    breakT: null,
     last5: [],
     lastInfGain: 1,
     macroStepCount: 0,

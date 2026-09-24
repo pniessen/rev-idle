@@ -398,13 +398,14 @@
 
   var PROMO_NAMES = ['Mult Gain', 'Lap Speed', 'Ascension Power', 'Promotion Power'];
 
-  function buildMasterToggle(kit, tipKey, getOn, setOn) {
-    var btn = kit.el('button', {
+  function buildMasterToggle(kit, tipAttrs, getOn, setOn) {
+    var attrs = {
       class: 'btn toggle auto-master',
       'aria-pressed': String(getOn()),
       tabindex: '0',
-      'data-tip': tipKey,
-    }, [getOn() ? 'On' : 'Off']);
+    };
+    for (var key in tipAttrs) attrs[key] = tipAttrs[key];
+    var btn = kit.el('button', attrs, [getOn() ? 'On' : 'Off']);
     btn.addEventListener('click', function () {
       setOn(!getOn());
       btn.setAttribute('aria-pressed', String(getOn()));
@@ -487,7 +488,7 @@
     var auto = state.inf.auto.buy;
     var card = kit.el('div', { class: 'card auto-card', 'data-auto': 'buy' });
     var head = kit.el('div', { class: 'row auto-card-head' }, [kit.el('div', { class: 'card-title' }, ['Autobuy'])]);
-    head.appendChild(buildMasterToggle(kit, 'autoBuy', function () { return auto.on; }, function (v) { auto.on = v; }));
+    head.appendChild(buildMasterToggle(kit, { 'data-tip': 'autoBuy' }, function () { return auto.on; }, function (v) { auto.on = v; }));
     card.appendChild(head);
     card.appendChild(buildColorGrid(kit, auto.circles, function () { kit.save(); }));
     return card;
@@ -497,7 +498,7 @@
     var auto = state.inf.auto.asc;
     var card = kit.el('div', { class: 'card auto-card', 'data-auto': 'asc' });
     var head = kit.el('div', { class: 'row auto-card-head' }, [kit.el('div', { class: 'card-title' }, ['Auto-Ascend'])]);
-    head.appendChild(buildMasterToggle(kit, 'autoAsc', function () { return auto.on; }, function (v) { auto.on = v; }));
+    head.appendChild(buildMasterToggle(kit, { 'data-tip': 'autoAsc' }, function () { return auto.on; }, function (v) { auto.on = v; }));
     card.appendChild(head);
     card.appendChild(buildColorGrid(kit, auto.circles, function () { kit.save(); }));
     return card;
@@ -507,7 +508,7 @@
     var auto = state.inf.auto.promote;
     var card = kit.el('div', { class: 'card auto-card', 'data-auto': 'promote' });
     var head = kit.el('div', { class: 'row auto-card-head' }, [kit.el('div', { class: 'card-title' }, ['Auto-Promote'])]);
-    head.appendChild(buildMasterToggle(kit, 'autoPromote', function () { return auto.on; }, function (v) { auto.on = v; }));
+    head.appendChild(buildMasterToggle(kit, { 'data-tip': 'autoPromote' }, function () { return auto.on; }, function (v) { auto.on = v; }));
     card.appendChild(head);
 
     var orderRow = kit.el('div', { class: 'auto-order-row' });
@@ -538,7 +539,7 @@
     var auto = state.inf.auto.prestige;
     var card = kit.el('div', { class: 'card auto-card', 'data-auto': 'prestige' });
     var head = kit.el('div', { class: 'row auto-card-head' }, [kit.el('div', { class: 'card-title' }, ['Auto-Prestige'])]);
-    head.appendChild(buildMasterToggle(kit, 'autoPrestige', function () { return auto.on; }, function (v) { auto.on = v; }));
+    head.appendChild(buildMasterToggle(kit, { 'data-tip': 'autoPrestige' }, function () { return auto.on; }, function (v) { auto.on = v; }));
     card.appendChild(head);
     card.appendChild(buildNumberField(kit, 'multX', {}, auto.multX, plainFormat, plainParse, 1, function (v) { auto.multX = v; }));
     card.appendChild(buildNumberField(kit, 'expGain', {}, auto.expGain, plainFormat, plainParse, 0, function (v) { auto.expGain = v; }));
@@ -550,7 +551,7 @@
     var auto = state.inf.auto.infinity;
     var card = kit.el('div', { class: 'card auto-card', 'data-auto': 'infinity' });
     var head = kit.el('div', { class: 'row auto-card-head' }, [kit.el('div', { class: 'card-title' }, ['Auto-Infinity'])]);
-    head.appendChild(buildMasterToggle(kit, 'autoInfinity', function () { return auto.on; }, function (v) { auto.on = v; }));
+    head.appendChild(buildMasterToggle(kit, { 'data-tip': 'autoInfinity' }, function () { return auto.on; }, function (v) { auto.on = v; }));
     card.appendChild(head);
     card.appendChild(buildNumberField(kit, 'Min IP', {}, auto.minIpLog, formatMinIp, parseMinIp, undefined, function (v) { auto.minIpLog = v; }));
     card.appendChild(buildNumberField(kit, 'Min time (s)', {}, auto.minTime, plainFormat, plainParse, 0, function (v) { auto.minTime = v; }));
@@ -730,8 +731,10 @@
     return Engine.buyStarExp(state);
   }
 
-  function buildStarRow(kit, state, kind, tipKey) {
-    var row = kit.el('div', { class: 'star-buy-row', 'data-star': kind, tabindex: '0', 'data-tip': tipKey }, [
+  function buildStarRow(kit, state, kind, tipAttrs) {
+    var rowAttrs = { class: 'star-buy-row', 'data-star': kind, tabindex: '0' };
+    for (var key in tipAttrs) rowAttrs[key] = tipAttrs[key];
+    var row = kit.el('div', rowAttrs, [
       kit.el('div', { class: 'star-buy-label' }, [starRowText(kind, state)]),
     ]);
     var btn = kit.el('button', { class: 'btn star-buy-btn' }, [fmt(starRowCostLog(kind, state)) + ' IP']);
@@ -796,9 +799,9 @@
     wrap.appendChild(kit.el('div', { class: 'stat-line', id: 'star-line', tabindex: '0', 'data-tip': 'sdAmount' }, [
       kit.el('span', { id: 'star-line-value' }, [starLineText(state)]),
     ]));
-    wrap.appendChild(buildStarRow(kit, state, 'star', 'starBuy'));
-    wrap.appendChild(buildStarRow(kit, state, 'base', 'starBase'));
-    wrap.appendChild(buildStarRow(kit, state, 'exp', 'starExp'));
+    wrap.appendChild(buildStarRow(kit, state, 'star', { 'data-tip': 'starBuy' }));
+    wrap.appendChild(buildStarRow(kit, state, 'base', { 'data-tip': 'starBase' }));
+    wrap.appendChild(buildStarRow(kit, state, 'exp', { 'data-tip': 'starExp' }));
     for (var j = 0; j < Engine.SD_UPGRADES.length; j++) {
       wrap.appendChild(buildSdRow(kit, state, j));
     }

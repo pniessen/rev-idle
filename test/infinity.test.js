@@ -866,3 +866,30 @@ test('tuned coefficients appear in upgrade and challenge text', () => {
   assert.ok(E.CHALLENGES[3].handicap.includes(String(T.ic4Pow)));
   assert.ok(E.CHALLENGES[8].handicap.includes(String(T.ic9Circles)));
 });
+
+test('every data-tip key has TIPS copy that renders on fresh and late states', () => {
+  const fs = require('node:fs'); const vm = require('node:vm'); const path = require('node:path');
+  const noop = new Proxy(function () {}, { get: () => noop, apply: () => noop });
+  const win = { Engine: E, innerWidth: 400, innerHeight: 800, addEventListener() {} };
+  win.window = win;
+  const ctx = vm.createContext({ window: win, document: noop, localStorage: noop, navigator: noop, console, setTimeout, clearTimeout });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../src/help.js'), 'utf-8'), ctx);
+  const TIPS = win.Help.TIPS; assert.ok(TIPS, 'Help.TIPS exported');
+  const keys = new Set();
+  for (const f of ['ui.js', 'ui-infinity.js']) {
+    const src = fs.readFileSync(path.join(__dirname, '../src', f), 'utf-8');
+    for (const m of src.matchAll(/'data-tip':\s*'([A-Za-z0-9]+)'/g)) keys.add(m[1]);
+  }
+  for (const k of ['ipHeader', 'iuCard', 'genRow', 'autoPrestige', 'icCard', 'breakToggle', 'starBuy', 'sdUpg']) assert.ok(keys.has(k), `ui uses ${k}`);
+  const late = E.newState(); late.infinities = 400; late.inf.ipLog = 40;
+  E.UPGRADES.forEach((u) => { late.inf.upg[u.id] = true; });
+  late.inf.ic.done = Array(9).fill(true); late.inf.ic.best = Array(9).fill(600); late.inf.stars.n = 1;
+  const sampleI = { iuCard: 5, genRow: 0, genBuy: 1, sdUpg: 2, icCard: 4, icStart: 4 };
+  for (const k of keys) {
+    assert.ok(k in TIPS, `TIPS missing ${k}`);
+    for (const s of [E.newState(), late]) {
+      const v = TIPS[k]; const txt = typeof v === 'function' ? v(s, k in sampleI ? sampleI[k] : 0) : v;
+      assert.equal(typeof txt, 'string'); assert.ok(txt.length > 0, `${k} empty`);
+    }
+  }
+});

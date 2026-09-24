@@ -292,7 +292,7 @@
     icChip: function (s) {
       var n = s.inf.ic.active;
       var c = Engine.CHALLENGES[n - 1];
-      return c ? ('In Challenge ' + n + ': ' + c.handicap + '.') : '';
+      return c ? ('In Challenge ' + n + ': ' + c.handicap + '.') : 'Not currently in a Challenge.';
     },
     confirmInfinity: function (s) {
       return 'Show a confirmation when you reach ' + fmt(Engine.INFINITY_LOG) + ' instead of going Infinite automatically.';
