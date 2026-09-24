@@ -916,8 +916,26 @@ const Engine = (() => {
   };
 })();
 
-if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
-else window.Engine = Engine;
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = Engine;
+  require('./engine-infinity.js');
+  require('./engine-auto.js');
+} else {
+  window.Engine = Engine;
+}
+</script>
+<script>// src/engine-infinity.js — Infinity layer mechanics (IP, tree, generators,
+// challenges, Break Infinity, Stars). Pure; attaches to the shared Engine.
+(function (E) {
+  'use strict';
+  const LOG2 = Math.log10(2);
+  E._inf = { LOG2 }; // internal scratch shared by later sections of this file
+})(typeof module !== 'undefined' && module.exports ? require('./engine.js') : window.Engine);
+</script>
+<script>// src/engine-auto.js — automation (autobuy, auto-ascend, auto-promote, auto-prestige, auto-infinity) and adaptive step size. Pure.
+(function (E) {
+  'use strict';
+})(typeof module !== 'undefined' && module.exports ? require('./engine.js') : window.Engine);
 </script>
 <script>// src/render.js
 // Canvas orbit renderer for Rev Idle. Attaches window.Renderer.
@@ -1770,6 +1788,15 @@ else window.Engine = Engine;
     refresh: refresh,
     showAt: showAt,
     hide: hide,
+  };
+})();
+</script>
+<script>// src/ui-infinity.js — the ∞ tab (Tree, Gens, Auto, ICs, Stars). DOM only via kit.el.
+(function () {
+  'use strict';
+  window.InfinityUI = {
+    render: function (container, state, kit) {},
+    update: function (container, state, kit) {},
   };
 })();
 </script>

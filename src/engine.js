@@ -369,5 +369,10 @@ const Engine = (() => {
   };
 })();
 
-if (typeof module !== 'undefined' && module.exports) module.exports = Engine;
-else window.Engine = Engine;
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = Engine;
+  require('./engine-infinity.js');
+  require('./engine-auto.js');
+} else {
+  window.Engine = Engine;
+}

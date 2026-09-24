@@ -22,15 +22,21 @@ function read(rel) {
 const template = read('src/template.html');
 const style = read('src/styles.css');
 const engine = read('src/engine.js');
+const engineInf = read('src/engine-infinity.js');
+const engineAuto = read('src/engine-auto.js');
 const render = read('src/render.js');
 const help = read('src/help.js');
+const uiInf = read('src/ui-infinity.js');
 const ui = read('src/ui.js');
 
 const markers = [
   ['/*@STYLE*/', style],
   ['/*@ENGINE*/', engine],
+  ['/*@ENGINE_INF*/', engineInf],
+  ['/*@ENGINE_AUTO*/', engineAuto],
   ['/*@RENDER*/', render],
   ['/*@HELP*/', help],
+  ['/*@UI_INF*/', uiInf],
   ['/*@UI*/', ui],
 ];
 
