@@ -383,19 +383,6 @@ const Engine = (() => {
     return s.scoreLog >= INFINITY_LOG;
   }
 
-  function goInfinite(s) {
-    if (!canInfinity(s)) return false;
-    const stats = s.stats;
-    const infinities = s.infinities + 1;
-    const inf = s.inf;
-    Object.assign(s, newState());
-    s.stats = stats;
-    s.infinities = infinities;
-    s.inf = inf;
-    s.inf.ipLog = logAdd(inf.ipLog, 0);
-    return true;
-  }
-
   // --- serialize ---
 
   function serialize(s) {
@@ -473,7 +460,6 @@ const Engine = (() => {
     canPromote,
     promote,
     canInfinity,
-    goInfinite,
     serialize,
     deserialize,
     promoEffects,

@@ -175,3 +175,83 @@ test('registerHooks runs preTick, auto, postTick in order', () => {
   try { E.tick(E.newState(), 0.1); } finally { E.registerHooks(saved); }
   assert.deepEqual(seen, ['pre', 'auto', 'post']);
 });
+
+const atInfinity = (s) => { s.scoreLog = E.INFINITY_LOG; return s; };
+
+test('ipGainLog: flat 1, x2 from the 5th Infinity, +1 per IC, x2 after IC4', () => {
+  const s = E.newState();
+  close(E.ipGainLog(s), 0);
+  s.infinities = 4; close(E.ipGainLog(s), Math.log10(2));
+  s.infinities = 0; s.inf.ic.done = [true, true, true, false, false, false, false, false, false];
+  close(E.ipGainLog(s), Math.log10(4)); assert.equal(E.icDoneCount(s), 3);
+  s.inf.ic.done[3] = true; close(E.ipGainLog(s), Math.log10(5) + Math.log10(2));
+  s.inf.stars.sdU[1] = 3; close(E.ipGainLog(s), Math.log10(5) + Math.log10(2) + Math.log10(4));
+});
+
+test('infGain doubles after IC9', () => {
+  const s = E.newState(); assert.equal(E.infGain(s), 1); s.inf.ic.done[8] = true; assert.equal(E.infGain(s), 2);
+});
+
+test('breakBonusLog: x10 at e3080, x100 at e3388; only broken and outside challenges', () => {
+  const s = E.newState(); s.inf.broken = true;
+  s.scoreLog = 3079.9; assert.equal(E.breakBonusLog(s), 0);
+  s.scoreLog = 3080; assert.equal(E.breakBonusLog(s), 1);
+  s.scoreLog = 3388; assert.equal(E.breakBonusLog(s), 2);
+  s.inf.ic.active = 2; assert.equal(E.breakBonusLog(s), 0);
+  s.inf.ic.active = 0; s.inf.broken = false; assert.equal(E.breakBonusLog(s), 0);
+});
+
+test('goInfinite grants IP and an Infinity, records stats, resets the run', () => {
+  const s = atInfinity(E.newState());
+  s.promo = [3, 3, 3, 3]; s.pMult = 1e6; s.inf.t = 100; s.inf.gpLog = 4; s.inf.gens[0] = { b: 2, aLog: 3 }; s.inf.stars.sdLog = 2;
+  s.inf.upg['2;1'] = true; s.inf.pendingConfirm = true;
+  assert.ok(E.goInfinite(s));
+  assert.equal(s.inf.ipLog, 0); assert.equal(s.infinities, 1); assert.equal(s.stats.totalIpLog, 0);
+  assert.equal(s.stats.fastestInfinity, 100); assert.deepEqual(s.stats.lastInfinities, [{ t: 100, ipGainLog: 0 }]);
+  assert.deepEqual(s.promo, [0, 0, 0, 0]); assert.equal(s.pMult, 1); assert.equal(s.scoreLog, -Infinity);
+  assert.equal(s.inf.t, 0); assert.equal(s.inf.tRun, 0); assert.equal(s.inf.gpLog, -Infinity);
+  close(s.inf.gens[0].aLog, Math.log10(2)); assert.equal(s.inf.gens[0].b, 2); assert.equal(s.inf.gens[1].aLog, -Infinity);
+  assert.equal(s.inf.stars.sdLog, -Infinity); assert.ok(s.inf.upg['2;1']); assert.equal(s.inf.pendingConfirm, false);
+  assert.ok(!E.goInfinite(s));
+});
+
+test('IC4 done: promotions restart at level 1', () => {
+  const s = atInfinity(E.newState()); s.inf.ic.done[3] = true; E.goInfinite(s); assert.deepEqual(s.promo, [1, 1, 1, 1]);
+});
+
+test('lastInfinities keeps 10; IP is capped at INFINITY_LOG', () => {
+  // NOTE: the brief's fixture subtracted 1e-6 here, but at this magnitude (~308)
+  // a float64 delta of 1e-6 is many orders of magnitude too large to be closed by
+  // these per-Infinity gains through correct logAdd (log10(10^a+10^b) is exactly
+  // `a` again whenever b is more than ~16 orders of magnitude below a, which any
+  // gain up to log10(2) always is against a ~308). No real ipGainLog magnitude
+  // could ever close that gap, so the assertion below was unsatisfiable as
+  // written; starting already at the cap keeps the same intent (cap holds under
+  // repeated Infinities) without relying on an impossible float crossing.
+  const s = E.newState(); s.inf.ipLog = E.INFINITY_LOG;
+  for (let i = 0; i < 12; i++) { atInfinity(s); s.inf.t = i + 1; E.goInfinite(s); }
+  assert.equal(s.stats.lastInfinities.length, 10); assert.equal(s.stats.lastInfinities[9].t, 12);
+  assert.equal(s.inf.ipLog, E.INFINITY_LOG); assert.equal(s.stats.fastestInfinity, 1);
+});
+
+test('fixed Infinity: first waits for confirmation, later ones are automatic', () => {
+  const s = atInfinity(E.newState());
+  E.tick(s, 0.01);
+  assert.equal(s.infinities, 0); assert.equal(s.inf.pendingConfirm, true); assert.equal(s.scoreLog, E.INFINITY_LOG);
+  E.goInfinite(s); assert.equal(s.inf.pendingConfirm, false);
+  atInfinity(s); E.tick(s, 0.01); assert.equal(s.infinities, 2);
+  s.inf.auto.confirmInfinity = true; atInfinity(s); E.tick(s, 0.01);
+  assert.equal(s.infinities, 2); assert.equal(s.inf.pendingConfirm, true);
+});
+
+test('broken: no automatic Infinity', () => {
+  const s = E.newState(); s.infinities = 3; s.inf.broken = true; s.scoreLog = 400;
+  E.tick(s, 0.01); assert.equal(s.infinities, 3); assert.ok(E.canInfinity(s));
+});
+
+test('resetForChallenge resets the run without reward', () => {
+  const s = E.newState(); s.scoreLog = 200; s.pMult = 50; s.inf.ipLog = 1; s.inf.t = 9;
+  E.resetForChallenge(s);
+  assert.equal(s.scoreLog, -Infinity); assert.equal(s.pMult, 1); assert.equal(s.inf.ipLog, 1);
+  assert.equal(s.infinities, 0); assert.equal(s.inf.t, 0);
+});
