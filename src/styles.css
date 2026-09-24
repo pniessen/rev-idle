@@ -707,10 +707,10 @@ textarea.save-area {
 }
 
 .auto-dot {
-  height: 28px;
-  min-height: 28px;
+  height: 40px;
+  min-height: 40px;
   padding: 0;
-  border-radius: 999px;
+  border-radius: 10px;
   border: 2px solid var(--line);
   background: var(--panel);
   cursor: pointer;
@@ -729,7 +729,11 @@ textarea.save-area {
 }
 
 .order-chip {
-  padding: 6px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 6px 10px;
   font-size: 11px;
 }
 
