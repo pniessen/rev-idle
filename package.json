@@ -1,0 +1,10 @@
+{
+  "name": "rev-idle",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test test/",
+    "build": "node build.mjs",
+    "sim": "node test/sim.js"
+  }
+}
