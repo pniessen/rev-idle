@@ -1,0 +1,660 @@
+# Rev Idle — Infinity Layer Design Spec (2026-09-24)
+
+This spec extends [2026-09-23-rev-idle-design.md](2026-09-23-rev-idle-design.md), which covers the shipped Revolution stage. It adds the whole Infinity layer of *Revolution Idle*: Infinity Points, the Infinity Upgrade tree, Generators, Automation, Infinity Challenges, Break Infinity and Stars. Everything is built in one pass, organised as Phases A, B and C.
+
+**Sources:**
+- [Infinity](https://revolutionidle.wiki.gg/wiki/Infinity) (the Generators and Stars links redirect here)
+- [Infinity Upgrades](https://revolutionidle.wiki.gg/wiki/Infinity_Upgrades)
+- [Infinity Challenges](https://revolutionidle.wiki.gg/wiki/Infinity_Challenges)
+- [Automations](https://revolutionidle.wiki.gg/wiki/Automations)
+- [Guide:Infinity](https://revolutionidle.wiki.gg/wiki/Guide:Infinity)
+- [Guide:Break Infinity](https://revolutionidle.wiki.gg/wiki/Guide:Break_Infinity)
+- [Achievements](https://revolutionidle.wiki.gg/wiki/Achievements)
+
+**Labels:**
+- **[W]** means the value comes from the wiki.
+- **[R]** means the wiki gives no formula or number, so it was reconstructed here. Every [R] number is an entry in `Engine.TUNE` (see §11) so the pacing sim can adjust it.
+
+**Invariant:** Revolution-stage mechanics (circles, level costs, ascension, prestige, promotions) stay exactly as shipped. The only exceptions are the explicit modifiers listed in §3. With no upgrades, no active challenge and no generators, every existing formula must give bit-identical results. The existing tests guard this.
+
+---
+
+## 1. Decisions
+
+| # | Ruling | Rationale |
+|---|---|---|
+| D1 | Phases A, B and C all ship in this build. | Product owner. |
+| D2 | IP before Break is flat per Infinity (§2.2). | Product owner. It matches the wiki's tree costs and the guide's figure of about 17 IP over about 11 Infinities. |
+| D3 | The tree is **faithful but trimmed**. It uses the wiki ids, costs and effects. It drops 10;1, 17;2, 18;2, 19;2 and 20;2, and adds one node, **3;2 Auto Work** (1 IP), which unlocks auto-promote. | Product owner. At its real cost (10;1, 256 IP) auto-promote cannot be reached before challenges. Promoting is the most tedious part of a repeat run. The dropped nodes are late, narrow or redundant with kept ones. |
+| D4 | Four automations are unlocked by upgrades: Autobuy (1;1), Auto-Ascend (2;2), Auto-Promote (3;2) and Auto-Prestige (5;3). Auto-Infinity comes from 15;1 and only matters while Infinity is broken. | Product owner, plus the wiki. |
+| D5 | **Fixed** Infinity is automatic after the first one. While not broken, score is capped at 1.79e308, and on reaching it the game performs an Infinity at once and shows a toast. Only the very first Infinity shows the modal. A Settings toggle, "Confirm each Infinity", brings the modal back. | The wiki says a fixed Infinity happens "as soon as you get 1.8e308". Without this, dozens of Phase B runs would each need a click. |
+| D6 | Each prerequisite is **any owned node in the previous kept column**. Exceptions are listed in §4. | The wiki shows no tree edges. The guide's path, which skips 2;1 and 5;3, has to be legal. |
+| D7 | The two IP achievements become built-in milestones: the 5th and later Infinities give ×2 IP, and completing IC4 gives ×2 IP. There is no achievement system. | This keeps the flat IP curve faithful. |
+| D8 | Starting a challenge performs an Infinity-style reset with no reward. Exiting one resets the run the same way. A challenge always plays as **fixed** (capped at e308, completes on reaching it) whatever the Break toggle says. Completed challenges can be re-run to improve the best time. | This matches the real game's challenge semantics. Best times feed 15;2–4 and 16;3. |
+| D9 | The vague challenge rewards and handicaps ("stronger", "a lot weaker", "decay") get concrete [R] numbers, and the UI shows those numbers. | Players need legible effects. |
+| D10 | Auto-prestige fires when a **ratio** threshold is met, pending P.Mult ≥ X × current (default X = 10), OR an optional exponent-gain threshold is met. It also has a minimum time and a stall rule. The defaults reproduce the pacing bot. | The wiki's "1,000" is ambiguous. A ratio works at every stage of the game. |
+| D11 | Autobuy is an on/off switch per circle. There is no percent-of-score slider. | The wiki advises "100%" anyway. This keeps the UI small at 400 px. |
+| D12 | There are 10 generators. G5–G10 only matter in Phase C, through Stardust upgrade 1, which extends 1;1 up to G10. | The Stardust upgrade tops out at G10. |
+| D13 | The Star exponent base is 0.4 (wiki Infinity page), not 0.45 (guide). | The wiki mechanics page takes precedence over the guide. |
+| D14 | All new big numbers (IP, GP, generator amounts, Stardust) are stored as log10. `ip` is replaced by `inf.ipLog`. | Break Infinity pushes IP past 1e308, and log storage avoids a second migration. |
+| D15 | The layer ends at 1.79e308 IP. IP is capped there, and a one-time "Eternity — coming soon" finale modal is shown. Play continues. | Eternity is out of scope. The cap is faithful because in the real game you cannot pass it without Eternity. |
+| D16 | Time Flux, macros, the IP Adjuster, leaderboards and achievements are out of scope. | None of these are core to the loop. |
+| D17 | UI: one new main tab, **∞**, which appears after the first Infinity. It holds sub-tabs Tree · Gens · Auto · ICs · Stars, and each sub-tab appears once it is unlocked. | This keeps the main tab bar at 6 items on 400 px screens and leaves room for an Eternity layer switcher later. |
+| D18 | Offline progress runs automation and generators, and can perform any number of fixed or auto Infinities. It is simulated in 0.5 s chunks when any automation is on, and in 1 s chunks otherwise. The 8 h cap stays. | Otherwise idle play does not work. The chunk size trades accuracy against CPU (budget in §9). |
+| D19 | Pacing compresses the real game. IC4 and IC9 target ≤ 90 min each instead of "several hours". The whole layer targets ≤ 60 h of active-bot time (§10). | The whole layer should be finishable by a browser idle player. |
+
+---
+
+## 2. Infinity core
+
+### 2.1 Reaching Infinity
+- `INFINITY_LOG = log10(1.79e308)` (unchanged).
+- **Not broken, or inside a challenge:** after every tick, `scoreLog = min(scoreLog, INFINITY_LOG)`. `canInfinity(s)` is `scoreLog ≥ INFINITY_LOG`.
+- **First Infinity** (`infinities === 0`): the UI shows the existing modal and the player confirms. When it is triggered offline, the score stays capped and the modal shows on return, as today.
+- **Later fixed Infinities** (including challenge completions): the engine calls `goInfinite(s)` itself at the end of `tick`.
+- **Exception:** when `infinities === 0` or `inf.auto.confirmInfinity` is on, `tick` only sets `inf.pendingConfirm = true`. The score stays capped, and the UI shows the modal, which calls `goInfinite`.
+- **Broken (and no challenge active):** there is no cap. `canInfinity(s)` is still `scoreLog ≥ INFINITY_LOG`. The player infinites manually through the button, or Auto-Infinity does it (§6.5).
+
+### 2.2 IP gain
+
+```
+ipGainLog(s) =
+    log10(1 + icDoneCount)                   // +1 per completed IC   [W]
+  + log10(2) * [s.infinities >= 4]           // the 5th and later Infinities  [W achv → milestone]
+  + log10(2) * [ic.done[3]]                  // IC4 completed          [W achv → milestone]
+  + upgIpLog(s)                              // 15;2, 16;1              (§4)
+  + log10(1 + sdU[1])                        // Stardust upgrade 2      [W]
+  + breakBonusLog(s)                         // §8
+  + log10(TUNE.ipBase)                       // [R] default 1
+```
+
+- All flags are read from the state **before** the Infinity is applied. So the run that completes IC4 does not yet get the IC4 ×2.
+- `ip` is then added: `inf.ipLog = min(INFINITY_LOG, logAdd(inf.ipLog, ipGainLog))` (D15).
+
+### 2.3 Infinity count (∞)
+- On each Infinity, `infinities += infGain(s)`, where `infGain = 2^[ic.done[8]]`. The IC9 reward is "Double Infinities gain" [W].
+- Passive gain comes from 18;1 (§4). `infinities` stays a plain number; it cannot realistically exceed 1e15.
+
+### 2.4 `goInfinite(s)` (rewritten)
+**Precondition:** `canInfinity(s)`.
+
+It performs these steps in order:
+1. Grant IP (§2.2) and ∞ (§2.3).
+2. Record the run time `t = inf.t`:
+   - `stats.fastestInfinity = min(existing, t)`
+   - push `{t, ipGainLog}` onto `stats.lastInfinities`, keeping the last 10
+   - `stats.totalIpLog = logAdd(stats.totalIpLog, ipGainLog)`
+3. If `inf.ic.active = n > 0`:
+   - `ic.done[n-1] = true`
+   - `ic.best[n-1] = min(existing, t)`
+   - `ic.active = 0`
+4. Revolution reset:
+   - `resetRun(s)`
+   - `pMult = 1`, `pExp = 1`
+   - `prestigeReqLog = TUNE.prestigeMinLog`
+   - `promo = ic.done[3] ? [1,1,1,1] : [0,0,0,0]` (IC4 reward)
+5. Infinity-run reset:
+   - `inf.t = 0`
+   - `inf.tRun = 0`
+   - `inf.gpLog = -Infinity`
+   - each generator's `aLog = b > 0 ? log10(b) : -Infinity`
+   - `inf.stars.sdLog = -Infinity`
+   - clear the stall trackers
+6. Kept (not reset): IP, ∞, upgrades, generator `b`, challenge done/best, Break toggle, star counts, SD upgrade levels, automation settings and stats.
+
+`resetForChallenge(s)` runs steps 4 and 5 only. It is used by `startChallenge` and `exitChallenge`.
+
+---
+
+## 3. Modifiers: the single `mods(s)` hook
+
+`mods(s)` is computed once per tick and on demand, and it is pure. Every Revolution formula reads from it, and it is the **only** place where upgrades, challenges and stars touch Revolution mechanics.
+
+| Field | Default (no Infinity content) | Used in | Formula |
+|---|---|---|---|
+| `lapMult` | 1 | `lapsPerSec`, `tick` | `1.1^[3;1] × 1.2^[4;1] × 3^[19;3]` |
+| `gainLog` | 0 | per-lap mult gain in `tick` | `gpExp × max(0, gpLog)` (§5.3) |
+| `expAdd` | 0 | `perRevLog` | `[2;1]×(0.01 + min(0.5, 0.01·sdU[2])) + 0.03·[IC3 done] − 0.4·[IC3 active]` |
+| `prodLog` | 0 | `perRevLog` (inside the product, before the exponent) | `(0.2·[IC7 done] − 2·[IC7 active]) × log10(max(1, inf.t))` |
+| `ascBase` | 10 | `promoEffects.p3` | `10 + 2·[6;1] + 1·[13;1] + 2·[IC8 done]` |
+| `ascMult` | 1 | `promoEffects.p3` | `f62 × f162 × 1.2^[IC2 done] × 0.25^[IC2 active]` (§4) |
+| `v[1..4]` | 1 | `promoEffects` variable parts | see below |
+| `pMultMult` | 1 | `pendingPrestige` | 5;1 factor |
+| `pExpMult` | 1 | `pendingPrestige` | 5;2 factor |
+| `gainPow` | 1 | `pendingPrestige`, `promoXp` | `0.4` if IC4 active |
+| `disabledPromo` | [] | `promoEffects`, `canPromote` | `[1,3]` (P2, P4, zero-indexed) if IC1 active |
+| `maxCircles` | 10 | `buy` unlock chain, `tick` | `4` if IC9 active |
+| `noAscend` | false | `canAscend` | true if IC8 active |
+| `decay` | 0 | `tick` | `TUNE.ic6Decay` if IC6 active |
+
+**Promotion variable parts:**
+- `v1 = vAll × (1 + √L1/10)^[14;1]`
+- `v2 = vAll × TUNE.ic1Boost^[IC1 done]`
+- `v3 = vAll`
+- `v4 = vAll × TUNE.ic1Boost^[IC1 done] × f163`
+
+where `vAll = TUNE.ic5Reward^[IC5 done] × TUNE.ic5Nerf^[IC5 active]`.
+
+**Modified formulas** (they reduce exactly to the shipped ones when all mods are at their defaults):
+
+```
+p4 = 1 + 0.05 · L4^0.48 · v4
+p1 = p4 · (floor(L1^1.5) · v1 + 1)
+p2 = p4 · (1 + √L2 · v2)
+p3 = p4 · (ascBase + L3^0.82 · v3) · ascMult
+```
+- A disabled promotion's level is treated as 0 in these formulas.
+
+```
+laps/s(i)       = level · baseSpeed · p2 · lapMult
+per-lap gain(i) = multGainLog_i + log10(p1) + gainLog           // exposed as multGainPerLapLog(s, i)
+perRevLog       = (pExp + expAdd) · (Σ unlocked multLog + log10(pMult) + prodLog)
+```
+- The effective exponent is floored at 0.1.
+
+**Prestige gains:**
+```
+raw pMult = 2.56 · (scoreLog−3)^2.25 · pMultMult
+pMult     = raw^gainPow
+pExp      = 1 + ((scoreLog−5)/225) · pExpMult · gainPow
+```
+
+**Promotion XP:**
+```
+promoXp = floor( ((m / promoMin)^0.75)^gainPow )
+```
+
+**IC6 decay:** each tick, for every circle, `multLog ← max(0, multLog · (1 − decay)^dt)`.
+
+---
+
+## 4. Infinity Upgrade tree (faithful, trimmed)
+
+- An upgrade id is `"col;row"`. Costs are in IP [W].
+- "Req" is the prerequisite. **prev** means any owned node in the previous kept column (D6).
+- `∞` = `s.infinities`, `t` = `inf.t` (seconds in the current Infinity) and `IP` = current IP.
+- "ΣIC" is the sum of the 9 best challenge times in seconds. It is only defined once all 9 are done; otherwise the factor is 1.
+- `ctf = clamp(TUNE.icRefSec / ΣIC, 1, 1e4)`.
+
+| Id | Name | Cost | Effect (formula) | Req | Phase |
+|---|---|---|---|---|---|
+| 1;1 | Infinity Generation | 1 | G1 ×max(1,∞) [W]. Unlocks Generators (grants 1 free G1) and Autobuy. | — | A |
+| 2;1 | Exponential Box | 1 | commonExp +0.01 [W] (Stardust upgrade 3 raises this) | 1;1 | A |
+| 2;2 | Auto Ascend | 1 | unlocks Auto-Ascend [W] | 1;1 | A |
+| 3;1 | Fast Laps | 1 | lap speed ×1.1 [W] | prev | A |
+| **3;2** | **Auto Work** (added, D3) | 1 | unlocks Auto-Promote | prev | A |
+| 4;1 | Even Faster Laps | 3 | lap speed ×1.2 [W] | prev | A |
+| 5;1 | Long Term Prestiging | 3 | P.Mult gain ×`min(10, 1+√(t/600))` [R] | 4;1 | A |
+| 5;2 | Solid Exponent | 3 | P.Exp gain ×`(1 + 0.1·log2(1+∞))` [R] | 4;1 | A |
+| 5;3 | Auto Prestige | 3 | unlocks Auto-Prestige [W] | 4;1 | A |
+| 6;1 | Mighty Ascension | 3 | ascension power base +2 [W] | 5;1 or 5;2 | A |
+| 6;2 | Ascend to Ascend | 3 | asc power ×`f62 = 1 + 0.25·log10(1+∞)` [R] | 5;2 or 5;3 | A |
+| 7;1 | Challenges! | 5 | unlocks Infinity Challenges [W] | prev | B |
+| 8;1 | Generator and Time | 16 | G1 ×`(1 + t/60)^0.5` [R] | 7;1 | B |
+| 8;2 | Generator and Power | 32 | G1 ×`(1 + log10(1+GP))` [R] | 7;1 | B |
+| 8;3 | Generator and Constant | 16 | G1 ×5 [W] | 7;1 | B |
+| 9;1 | Generator 2 and Time | 128 | G2 ×`(1 + t/60)^0.5` [R] | prev | B |
+| 9;2 | Generator 2 and Constant | 128 | G2 ×3 [W] | prev | B |
+| 11;1 | Weak Generators | 300 | G1 ×`(1 + log10(1+IP))` [R] | prev (col 9) | B |
+| 11;2 | Medium Generators | 400 | G2 ×`(1 + log10(1+IP))^0.5` [R] | prev (col 9) | B |
+| 12;1 | First, But Better | 512 | G2 ×`max(1,∞)^0.5` [R] | prev | B |
+| 13;1 | A Little Gift | 600 | ascension power base +1 [W] | prev | B |
+| 14;1 | First for the First | 1,024 | P1 variable part ×`(1 + √L1/10)` [R] | prev | B |
+| 14;2 | Efficiency V | 1,024 | gpExp → 0.75 [W] | prev | B |
+| 15;1 | Auto Infinity | 2,048 | unlocks Auto-Infinity [W] | prev | C |
+| 15;2 | Fast IP Gain | 2,048 | IP ×`ctf^0.5` [R] | prev | C |
+| 15;3 | First Generator Power | 2,048 | G1 ×`ctf` [R] | prev | C |
+| 15;4 | Second Generator Power | 2,048 | G2 ×`ctf^0.75` [R] | prev | C |
+| 16;1 | Infinities to IP | 5,000 | IP ×`max(1,∞)^0.2` [R] | prev | C |
+| 16;2 | Stronger Ascension Power | 5,000 | asc power ×`f162 = 1 + 0.05·log2(1+∞)` [R] | prev | C |
+| 16;3 | Empowered Promotions | 5,000 | P4 variable part ×`f163 = clamp(3600/ICbest9, 1, 10)^0.5` [R] (1 before IC9 is done) | prev | C |
+| 17;1 | Third's Turn | 1e6 | G3 ×`max(1,∞)^0.25` [R] | prev | C |
+| 17;3 | Boost for the First | 1e6 | G1 ×10 [W] | prev | C |
+| 18;1 | Passive Infinities | 2e11 | ∞/s = `TUNE.passiveInfK × infGain / max(1, fastestInfinity) × sdU4mult` [R] | prev | C |
+| 18;3 | Third from Second | 1e11 | G3 ×`(1 + b2)` [R] | prev | C |
+| 19;1 | Almost One | 1e12 | gpExp → 0.9 [W] | prev | C |
+| 19;3 | Challenge Efficiency | 1e12 | lap speed ×3 [W] | prev | C |
+| 20;1 | As Fast as Strong | 1e21 | all generators ×`clamp(600/fastestInfinity, 1, 100)^0.5` [R] (1 if there is no fastest time yet) | prev | C |
+| 21;1 | A Falling Star | 1e33 | unlocks Stars [W] | 20;1 | C |
+
+**Tree rules:**
+- "prev" for column 11 is column 9, because column 10 is dropped.
+- IP spent is never refunded.
+- In total there are 38 nodes: 11 in Phase A, 12 in Phase B and 15 in Phase C.
+
+**Buying:** `canBuyUpgrade(s, id)` requires three things: the node is not owned, its prerequisites are met, and `ipLog ≥ log10(cost)`. `buyUpgrade` spends the IP with `logSub`.
+
+---
+
+## 5. Generators
+
+### 5.1 Ownership and cost
+- Generators are unlocked by 1;1. Buying 1;1 sets `gens[0].b = 1` and `aLog = 0`; that is the free G1.
+- Generator k (1-based) has a bought count `b_k`. Its purchase count is `p_k = b_k − 1` for G1 (the free one does not count) and `p_k = b_k` otherwise. Cost of the next one is `first_k · step_k^p_k` [R]:
+
+| Gk | Cost of next (IP) |
+|---|---|
+| G1 | `32 · 5^(b1−1)` → 32, 160, 800, 4000 … |
+| G2 | `150 · 10^b2` |
+| G3 | `1e5 · 100^b3` |
+| G4 | `1e9 · 1e3^b4` |
+| G5–G10 | `10^(9 + 6(k−4)) · 10^((k−1)·b_k)`: first costs 1e15, 1e21, 1e27, 1e33, 1e39, 1e45 |
+
+- Gk+1 is only buyable once `b_k ≥ 1`.
+- Buying a generator adds 1 to both `b_k` and the current amount: `aLog = logAdd(aLog, 0)`.
+
+### 5.2 Production (per tick, explicit Euler, using start-of-tick values)
+```
+M_k (log)  = log10(2)·(b_k − 1)                          // ×2 per purchase  [W]
+           + upgrade factors on Gk (§4)
+           + log10(max(1,∞)) if 1;1 applies to Gk        // G1; SD upg 1 extends it to G(1+sdU[0])
+           + log10(2)·[IC6 done]                          // "all generators twice as strong"
+           + 20;1 factor
+           + log10(TUNE.genRate)                          // [R] default 1
+softcap:   if M_k > 1000 then M_k = 1000 · (M_k/1000)^0.5  // "Generator Mult softcapped at 1e1,000" [W], [R] shape
+
+gpLog  = logAdd(gpLog, a1Log + M_1 + starGpLog + log10(dt))
+aLog_k = logAdd(aLog_k, a(k+1)Log + M_(k+1) + log10(dt))   for k = 1..9
+```
+- `starGpLog` is defined in §7.
+
+### 5.3 Effect on the Revolution stage
+- Every circle's per-lap mult gain is multiplied by `max(1, GP)^gpExp` (so `gainLog = gpExp · max(0, gpLog)`).
+- `gpExp` is 0.666 by default, 0.75 with 14;2 and 0.9 with 19;1 [W]. As the wiki's example says, GP 16 gives ×6.35.
+- GP resets every Infinity. So each run accelerates as it goes, and time-based upgrades reward longer runs.
+
+---
+
+## 6. Automation
+
+All automation logic lives in the engine as `autoStep(s, dt)`:
+- `tick` calls it after production.
+- `simulate` calls it too, which is how automation also runs offline.
+- The pacing bot uses it unchanged, so the bot's pacing is the pacing the player gets.
+
+Each automation needs its upgrade **and** its master toggle to be on.
+
+Every step runs in this order: ascend, then buy, then promote, then prestige, then infinity. The stall tracker is shared by promote and prestige:
+- `rt.markLog` / `rt.markT` update whenever `scoreLog ≥ markLog + 1` or score drops.
+- The run is stalled when `inf.tRun − markT > auto.stallSec`.
+- `inf.tRun` is the time since the last prestige, promotion or Infinity reset.
+- `tick` adds `dt` to both `inf.t` and `inf.tRun`. `prestige`, `promote` and the Infinity reset set `inf.tRun = 0` and clear `rt`.
+
+### 6.1 Autobuy colours (1;1)
+- **Settings:** `auto.buy.on` (default true once unlocked) and `auto.buy.circles[10]` (all true).
+- **Behaviour:** repeatedly buy one level of the **cheapest** affordable level among enabled, unlocked, below-cap circles, until nothing is affordable. There is a hard cap of `TUNE.autoBuyMaxPerStep = 500` purchases per step.
+
+### 6.2 Auto-Ascend (2;2)
+- **Settings:** `auto.asc.on` and `auto.asc.circles[10]`.
+- **Behaviour:** ascend every enabled circle where `canAscend` is true. Under IC8 this does nothing.
+
+### 6.3 Auto-Promote (3;2)
+- **Settings:**
+  - `on`
+  - `order` (a permutation of [0,1,2,3], default [0,1,2,3])
+  - `xFactor` (default 2)
+  - `minTime` (s, default 1)
+- **Behaviour:**
+  1. Let `k` be the next promotion in the cycle: `order[stats.promotions mod 4]`, skipping disabled ones.
+  2. When `inf.tRun ≥ minTime`, promote to `k` if `promoXp ≥ max(1, promo[k]·xFactor, promo[k]+1)`.
+  3. Otherwise, if the run is stalled and `!canPrestige`, promote to the first promotion in cycle order that `canPromote` allows.
+
+### 6.4 Auto-Prestige (5;3)
+- **Settings:**
+  - `on`
+  - `multX` (default 10)
+  - `expGain` (default 0, meaning off)
+  - `minTime` (s, default 0.2)
+- **Behaviour:** if `canPrestige && inf.tRun ≥ minTime`, prestige when **any** of these holds:
+  - `pMult === 1`, the first prestige after a reset
+  - `pending.pMult ≥ multX · pMult`
+  - `expGain > 0 && pending.pExp − pExp ≥ expGain`
+  - stalled AND (`pending.pMult > 1.5·pMult` or `pending.pExp > pExp + 0.02`)
+
+### 6.5 Auto-Infinity (15;1, broken only)
+- **Settings:**
+  - `on`
+  - `minIpLog` (default 0, i.e. ≥ 1 IP)
+  - `minTime` (s, default 0)
+- **Behaviour:** when broken and no challenge is active, infinite once `canInfinity && ipGainLog ≥ minIpLog && inf.t ≥ minTime`.
+
+### 6.6 Shared
+- `auto.stallSec` defaults to 30 (0 turns the stall rule off).
+- `auto.confirmInfinity` defaults to false (see D5).
+- Autobuy and Auto-Ascend default to on when unlocked. Promote and Prestige also default to on with the settings above.
+
+---
+
+## 7. Stars (21;1)
+
+State: `stars.n` (Stars), `stars.nb` (base upgrades), `stars.ne` (exponent upgrades), `stars.sdLog` (Stardust; resets on Infinity [W]), `stars.sdU[4]` (Stardust-upgrade levels; kept [W]).
+
+```
+base     = 2.75 + 0.275·nb                               [W]
+exp      = 0.4 + 0.05·ne                                 [W] (D13)
+SD/s     = n ≥ 1 ? 0.05 · base^n : 0                     [W]
+starGpLog = exp · max(0, sdLog)                          // GP gain ×SD^exp  [W]
+```
+
+**Costs (IP):**
+- Next Star, with n Stars owned: `costLog = 33 + Σ_{j<n} step_j`, where `step_j` is 3 for j < 18, 7 for 18 ≤ j < 30, and `7 + (j − 29)` for j ≥ 30. [W] gives "+e3, then e7 or more after ~e87"; the growth after that is [R].
+- Base upgrade: `1e34 · 1e4^nb` [R].
+- Exponent upgrade: `1e35 · 1e5^ne` [R], capped at ne = 12.
+
+**Stardust upgrades** (costs in SD [R]; effects [W]). The table's j is 1-based; the state stores `sdU[j−1]`, and `n` is that level. `sdU4mult = min(62.62, 1.05^sdU[3])`.
+
+| j | Effect | Cost of next | Max |
+|---|---|---|---|
+| 1 | 1;1's ×∞ also applies to G2 … G(1+n) | `10 · 100^n` | 9 (reaches G10) |
+| 2 | IP ×(1+n) | `20 · 10^n` | ∞ |
+| 3 | 2;1 gives +0.01·n more commonExp | `50 · 3^n` | 50 (+0.5) |
+| 4 | 18;1 rate ×`min(62.62, 1.05^n)` | `100 · 2^n` | 85 |
+
+---
+
+## 8. Infinity Challenges (7;1) and Break Infinity
+
+- Only one challenge can be active at a time. Challenge n requires challenge n−1 to be done.
+- **Start** (`startChallenge(s, n)`): calls `resetForChallenge` and sets `ic.active = n`.
+- **Exit** (`exitChallenge(s)`): calls `resetForChallenge` and sets `active = 0`.
+- **Goal:** reach 1.79e308 score with the handicap active. Completion follows §2.4, so it pays normal IP and ∞.
+- **Reward:** the IC-specific bonus, plus +1 to the IP multiplier (via `icDoneCount`).
+
+| IC | Name | Handicap [W] → implementation | Reward [W] → implementation |
+|---|---|---|---|
+| 1 | Ionized Speed | P2 and P4 disabled (level treated as 0, cannot promote into them) | P2 and P4 variable parts ×`ic1Boost` (1.5) [R] |
+| 2 | Descent | asc power ÷4 | asc power ×1.2 |
+| 3 | The First Root | commonExp −0.4 | commonExp +0.03 |
+| 4 | Steep Climbs | prestige and promote gains ^0.4 (§3) | after every Infinity, all promotions start at level 1; IP ×2 (D7) |
+| 5 | Fired From Work | all promotion variable parts ×`ic5Nerf` (0.25) [R] | ×`ic5Reward` (1.1) [R] |
+| 6 | The Drain | colour mult logs decay ×(1−0.01)^dt, floor ×1 [R] | all generators ×2 |
+| 7 | Quadratic Division | product of mults ÷ t² | product of mults × t^0.2 |
+| 8 | Noscensions | ascensions disabled | ascension power base +2 |
+| 9 | Isolationism | only Red–Green (4 circles) can unlock | ∞ gain ×2; unlocks Break Infinity |
+
+**Break Infinity:**
+- `canBreak(s)` is `ic.done` all true. `setBroken(s, bool)` flips the toggle. The Break card at the top of the ICs sub-tab offers "Break" and "Fix".
+- Fixing while `scoreLog > INFINITY_LOG` clamps the score, which triggers the automatic Infinity at the next tick.
+- IP bonus while broken [W]:
+  ```
+  breakBonusLog(s) = broken && !ic.active ? max(0, floor((scoreLog − 2772) / 308)) : 0
+  ```
+  That gives ×10 at e3,080, ×100 at e3,388, and so on.
+- The UI shows an "IP bar": progress from the last ×10 threshold to the next one.
+
+---
+
+## 9. Offline progress, save format, engine API
+
+### 9.1 Offline and hidden tab
+- `simulate(s, seconds)` runs `tick` in chunks of `dt = anyAutoOn(s) ? 0.5 : 1`. `tick` itself advances generators, IC6 decay, 18;1 and Stardust, then calls `autoStep` and the fixed/auto Infinity checks. It returns:
+  ```
+  { scoreLogBefore, scoreLogAfter, ipGainedLog, infinitiesGained, icCompleted: [n...] }
+  ```
+- **Budget:** the 8 h cap is 57,600 chunks, which must run in under 1.5 s on a mid laptop (checked by a test with a timing guard of 3 s).
+- The offline modal adds these lines: "+X IP", "+N Infinities" and "Challenge n completed".
+
+### 9.2 State v2 (additions; v1 fields unchanged except `ip`)
+```js
+{
+  v: 2,
+  // ... all v1 fields; `ip` removed (migrated), `infinities` kept
+  inf: {
+    ipLog: -Infinity,
+    upg: {},                                  // { '1;1': true, ... }
+    gens: [{ b: 0, aLog: -Infinity }, ...×10],
+    gpLog: -Infinity,
+    t: 0,                                     // seconds in current Infinity
+    tRun: 0,                                  // seconds since last prestige/promotion/Infinity
+    broken: false,
+    pendingConfirm: false,                    // fixed Infinity awaiting modal (confirmInfinity / first)
+    finaleSeen: false,
+    ic: { active: 0, done: [false ×9], best: [null ×9] },
+    stars: { n: 0, nb: 0, ne: 0, sdLog: -Infinity, sdU: [0, 0, 0, 0] },
+    auto: {
+      buy:      { on: true, circles: [true ×10] },
+      asc:      { on: true, circles: [true ×10] },
+      promote:  { on: true, order: [0, 1, 2, 3], xFactor: 2, minTime: 1 },
+      prestige: { on: true, multX: 10, expGain: 0, minTime: 0.2 },
+      infinity: { on: false, minIpLog: 0, minTime: 0 },
+      stallSec: 30,
+      confirmInfinity: false,
+    },
+    rt: { markLog: -Infinity, markT: 0 },     // stall tracker (saved; harmless)
+  },
+  stats: { /* v1 fields */, fastestInfinity: null, lastInfinities: [], totalIpLog: -Infinity },
+}
+```
+
+### 9.3 Migration
+- `deserialize` accepts `v === 1 || v === 2`, then returns `migrate(obj)`. `migrate` does three things:
+  1. It deep-merges `obj` onto `newState()`: plain objects recursively, arrays element-wise with defaults for missing entries, and the `-inf` sentinel restored.
+  2. If `v === 1`, it sets `inf.ipLog = ip > 0 ? log10(ip) : -Infinity`, deletes `ip` and sets `v = 2`.
+  3. It validates the result: 10 circles and 10 generators.
+- A v1 save that already went Infinite, with `ip: 1` and `infinities: 1`, therefore loads with 1 IP and sees the ∞ tab immediately.
+- Unknown extra keys are dropped.
+
+### 9.4 Engine API additions (all pure; `s` = state)
+
+| Function | Returns / effect |
+|---|---|
+| `mods(s)` | modifier object (§3) |
+| `multGainPerLapLog(s, i)` | the log gain per lap for circle i (used by UI and tooltips) |
+| `ipGainLog(s)`, `infGain(s)`, `breakBonusLog(s)` | §2.2, §2.3, §8 |
+| `UPGRADES` | array of `{ id, col, row, name, cost, phase, req: 'prev' \| [ids], desc, effectText(s) }` |
+| `hasUpg(s, id)`, `canBuyUpgrade(s, id)`, `buyUpgrade(s, id)` | §4 |
+| `upgEffect(s, id)` | numeric current factor, for display |
+| `genCostLog(s, k)`, `canBuyGen(s, k)`, `buyGen(s, k)`, `genMultLog(s, k)`, `gpMultLog(s)` | §5 (k is 0-based) |
+| `autoStep(s, dt)` | §6; returns `{ actions: [...] }` for toasts and sim logging |
+| `CHALLENGES` | array of `{ n, name, handicap, reward }` (display text) |
+| `canStartChallenge(s, n)`, `startChallenge(s, n)`, `exitChallenge(s)` | §8 |
+| `canBreak(s)`, `setBroken(s, on)` | §8 |
+| `starCostLog(s)`, `buyStar(s)`, `starBaseCostLog(s)`, `buyStarBase(s)`, `starExpCostLog(s)`, `buyStarExp(s)` | §7 |
+| `sdRateLog(s)`, `sdUpgCostLog(s, j)`, `canBuySdUpg(s, j)`, `buySdUpg(s, j)` | §7 |
+| `migrate(obj)` | §9.3 |
+| `anyAutoOn(s)` | chunk-size helper |
+
+**Changed functions:**
+- `goInfinite` (§2.4)
+- `canInfinity` (unchanged test; cap semantics in §2.1)
+- `tick`
+- `simulate` (new return fields)
+- `lapsPerSec`, `perRevLog`, `promoEffects`, `pendingPrestige`, `promoXp`, `canPromote`, `canAscend`, `buy` (these read `mods`)
+- `fmtLog`: exponents ≥ 1,000 get thousands separators, e.g. `1.00e3,080`
+
+All existing signatures are kept.
+
+---
+
+## 10. UI
+
+### 10.1 Navigation (400 px first)
+- **Main tabs:** Circles · Prestige · Promote · **∞** · Stats · Settings.
+  - ∞ is visible once `infinities ≥ 1` or `ipLog > -Infinity`.
+  - At widths under 420 px, Stats and Settings collapse to icon buttons (inline SVG glyphs, not emoji), so labels stay at ≥ 12 px.
+- **∞ tab layout:**
+  - A sticky header: `IP 1.23e45 · +X next · ∞ 1,234`. When broken it adds the IP bar.
+  - A sub-tab row: **Tree · Gens · Auto · ICs · Stars**.
+    - Gens and Auto appear with 1;1.
+    - ICs appears with 7;1.
+    - Stars appears with 21;1.
+    - The last sub-tab used is remembered in localStorage (wrapped in try/catch).
+- **Top chip bar (Circles):** adds a `GP ×…` chip once generators exist, and an `IC n` chip while a challenge is active.
+
+### 10.2 Sub-tabs
+- **Tree.**
+  - The tree is drawn as a vertical list of column rows rather than an SVG graph.
+  - Each row has a small column label ("C5") and 1–4 cards in a 2-wide grid. Each card shows the short name, the cost, and the current effect value (e.g. `×3.2`).
+  - A card is in one of three states:
+    - owned: filled accent
+    - buyable: glow, and it is a button
+    - locked: dim, shows the unmet requirement (`Needs 5;1 or 5;2`)
+  - Rows are revealed progressively: every column up to and including the first column with no owned node, plus one dimmed preview column.
+  - Tapping a buyable card buys it. There is no two-step confirm, because it is cheap and irreversible but low-stakes; this matches circle buys.
+- **Gens.**
+  - A GP line: `GP 1.2e5 → Mult Gain ×2,345 (^0.666)`.
+  - Rows G1…G(highest bought + 1), each with amount, `×mult`, `+rate/s` of the next tier down, and a Buy button showing the cost.
+  - A footnote line appears when the softcap is active.
+- **Auto.** One collapsible card per unlocked automation.
+  - Buy and Ascend: a master toggle plus a 5×2 grid of colour-dot toggles.
+  - Promote: a master toggle; an order picker (4 chips, tap to cycle positions); `×` factor; min time.
+  - Prestige: a master toggle; multX; expGain; min time.
+  - Infinity (15;1): a master toggle; min IP (accepts `1e20`); min time.
+  - A shared "stall seconds" field.
+  - Inputs are validated. Invalid input reverts to the previous value and shows a toast.
+- **ICs.**
+  - A Break card at the top, shown once `canBreak`, with a Break/Fix toggle.
+  - Then 9 cards in a single column. Each card shows its number and name, the handicap, the reward, a status (locked / available / active / done ✓), the best time, and a Start or Exit button.
+  - Start and Exit use the existing `twoStepConfirm`, because they reset the run.
+- **Stars.**
+  - Readouts: `SD 1.2e9 (+3.4e7/s) → GP ×…`.
+  - Three buyables: Star, Base and Exponent, each showing its current value, cost and a Buy button.
+  - The 4 Stardust upgrades, each with level/max, effect and cost.
+  - A reminder: "Stardust resets on Infinity — spend it first."
+
+### 10.3 Other surfaces
+- **Prestige tab:**
+  - When broken, the Infinity button reads `Go Infinite (+X IP)` and the IP bar is shown.
+  - While a challenge is active, a banner reads `IC4 Steep Climbs — reach 1.79e308`.
+- **Canvas:** a subtle banner with the IC name while a challenge is active.
+- **Stats:**
+  - Infinities, total IP and fastest Infinity.
+  - The last 10 Infinities (time and IP).
+  - IC best times and ΣIC.
+- **Settings:** a "Confirm each Infinity" toggle.
+- **Modals:**
+  - The first-Infinity modal copy changes to "You gained 1 Infinity Point. Spend it in the new ∞ tab."
+  - The Eternity finale (D15) shows once.
+- **Toasts:** automatic Infinity `+X IP (∞ n)`, challenge completed, and upgrade bought (only when bought via the offline summary).
+
+### 10.4 Tooltips
+These use the concurrent help system: a `data-tip` key with optional `data-tip-i`, `TIPS[key]` as a string or `function(s, i)`, or a `tipFn` on the element.
+- Live numbers always come from Engine helpers.
+- New keys and their copy, where `{…}` means a live value:
+
+| Key (i) | Copy |
+|---|---|
+| `ipHeader` | Infinity Points — earned each time you go Infinite. Next Infinity gives +{ipGain} IP. Spend IP on the Tree, Generators and Stars. |
+| `infCount` | Infinities performed: {∞}. Several upgrades grow stronger with more Infinities. |
+| `iuCard` (id) | {name} — {effect text}. Cost {cost} IP. {Requires … / Owned — currently ×{value}}. |
+| `gpLine` | Generator Power multiplies every ring's mult gain per lap by GP^{gpExp}. It resets each Infinity, so runs speed up as they go. |
+| `genRow` (k) | G{k}: you have {amount} ({bought} bought). Each makes {mult} {G(k−1) or GP} per second. Every purchase doubles its output. |
+| `genBuy` (k) | Buy another G{k} for {cost} IP. Bought generators are kept through Infinity; produced ones are not. |
+| `autoBuy` | Autobuy: every moment, buys the cheapest affordable level among the rings you've enabled. |
+| `autoAsc` | Auto-Ascend: ascends enabled rings as soon as they hit their level cap. |
+| `autoPromote` | Auto-Promote: cycles through promotions in your order, promoting once XP reaches {×factor} your current level in the next one (or when progress stalls). |
+| `autoPrestige` | Auto-Prestige: prestiges when pending P.Mult ≥ {multX}× current, or P.Exp would rise by ≥ {expGain}, or progress has stalled — after at least {minTime}s. |
+| `autoInfinity` | Auto-Infinity (Broken only): goes Infinite once this run would give ≥ {minIP} IP and has lasted ≥ {minTime}s. |
+| `stallSec` | A run counts as stalled when score hasn't grown ×10 for this many seconds. Stalls let Auto-Prestige/Promote act early. 0 = off. |
+| `icCard` (n) | Challenge {n}: {handicap}. Reach 1.79e308 to complete. Reward: {reward}, plus +1 to your IP multiplier. Best: {time}. |
+| `icStart` (n) | Starting resets your current run (no IP). You keep upgrades, generators and IP. |
+| `breakToggle` | Broken: score can pass 1.79e308 and you choose when to go Infinite. Every e308 past e2,772 multiplies IP ×10. Fixed: you go Infinite automatically at 1.79e308. |
+| `ipBar` | IP bonus ×{10^k}. Next ×10 at e{threshold}. |
+| `starBuy` | Stars produce Stardust: 0.05 × base^stars per second ({rate}/s now). |
+| `starBase` | Star base {base} → {base+0.275}. Raises Stardust per Star. |
+| `starExp` | Stardust exponent {exp} → {exp+0.05}. Generator Power gain × Stardust^exp. |
+| `sdAmount` | Stardust {sd}. Resets on Infinity — spend it before you go Infinite. |
+| `sdUpg` (j) | {effect}. Level {n}/{max}. Cost {cost} Stardust. Kept through Infinity. |
+| `gpChip` | Generator Power boost to mult gain: ×{gpMult}. |
+| `icChip` | In Challenge {n}: {handicap}. |
+| `confirmInfinity` | Show a confirmation when you reach 1.79e308 instead of going Infinite automatically. |
+| `goInfinite` (updated) | Go Infinite: gain +{ipGain} IP and +{infGain} Infinity, then restart the Revolution stage. Upgrades, generators and IP are kept. |
+
+---
+
+## 11. TUNE constants (all reconstructed values)
+
+| Key | Default | Meaning |
+|---|---|---|
+| `ipBase` | 1 | global IP multiplier (escape hatch) |
+| `genRate` | 1 | global generator output multiplier |
+| `gpExp0`, `gpExp14`, `gpExp19` | 0.666, 0.75, 0.9 | [W] GP exponents |
+| `genCost` | table §5.1 | per-generator `[log first_k, log step_k]`, applied to `p_k` |
+| `genSoftcapLog` | 1000 | [W] softcap start |
+| `u51Div`, `u51Cap` | 600, 10 | 5;1 |
+| `u52K` | 0.1 | 5;2 |
+| `u62K`, `u162K` | 0.25, 0.05 | 6;2, 16;2 |
+| `u8TimeDiv` | 60 | 8;1, 9;1 |
+| `u121Pow`, `u171Pow`, `u161Pow` | 0.5, 0.25, 0.2 | ∞-power upgrades |
+| `u141K` | 0.1 | 14;1 |
+| `icRefSec`, `ctfMax` | 36000, 1e4 | 15;2–4 |
+| `u163Ref` | 3600 | 16;3 |
+| `passiveInfK` | 2 | 18;1 |
+| `u201Ref`, `u201Cap` | 600, 100 | 20;1 |
+| `ic1Boost`, `ic5Nerf`, `ic5Reward` | 1.5, 0.25, 1.1 | challenge promotion factors |
+| `ic6Decay` | 0.01 | per-second fractional decay of colour mult logs |
+| `starBaseCost`, `starExpCost`, `starExpMax` | [34,4], [35,5], 12 | [firstLog, stepLog] |
+| `sdUpgCost` | [[1,2],[1.30103,1],[1.69897,0.47712],[2,0.30103]] | [firstLog, stepLog] |
+| `autoBuyMaxPerStep` | 500 | CPU guard |
+| `offlineDtAuto`, `offlineDt` | 0.5, 1 | D18 |
+
+---
+
+## 12. Pacing targets
+
+These are measured by the sim's active bot, which uses the engine's automation with default settings, scripted purchases, and `DT=0.1` (`DT=0.5` allowed in Phase C). Each target also has a floor, to catch collapse.
+
+| Milestone | Target | Floor |
+|---|---|---|
+| 1st Infinity (regression) | 3h22m ±10% | — |
+| 2nd Infinity run | 60–75 min | ≥ 30 min |
+| 3rd Infinity run | ≤ 55 min | ≥ 20 min |
+| All 4 automations owned (1;1, 2;2, 3;2, 4;1, 5;3 = 9 IP) | affordable after Infinity 7, i.e. from run 8 on | — |
+| Run length at Infinity 10 | ≤ 30 min | ≥ 8 min |
+| 7;1 bought (Challenges) | cumulative ≤ 10 h | ≥ 5 h |
+| Each of IC1–3, 5–8 | ≤ 45 min per attempt (including the IP farming before it) | — |
+| IC4, IC9 | ≤ 90 min per attempt | — |
+| All 9 ICs (Break unlocked) | cumulative ≤ 22 h | ≥ 12 h |
+| Normal fixed run at Break | ≤ 3 min | ≥ 20 s |
+| Col 17 (1e6 IP) | Break + ≤ 5 h | — |
+| First Star (2e33 IP) | Break + ≤ 15 h | — |
+| 1.79e308 IP (finale) | cumulative ≤ 60 h | ≥ 30 h |
+
+Tuning order: `genRate`, then `ipBase`, then the per-upgrade [R] constants. Wiki [W] numbers are only changed if [R] tuning cannot hit a target, and any such deviation goes in the spec's deviation note, like the existing 0.04 mult gain.
+
+---
+
+## 13. Sim changes (`test/sim.js`)
+
+- **`MODE=first` (default).** This is today's single-run bot, which becomes the regression check.
+- **`MODE=layer`.** A multi-Infinity campaign with `HOURS` (default 80). The bot:
+  1. Before automation is owned, uses its existing greedy logic. Once an automation is owned, it enables it through `inf.auto` and lets `autoStep` act. The greedy logic is refactored to call the same engine rules.
+  2. Between Infinities, spends IP from a **scripted priority list**. This is the guide path: 1;1, 2;2, 3;1, 3;2, 4;1, 5;3, 5;2, 6;1, 6;2, 7;1, 8;3, 8;1, 8;2, G1, 9;2, G2, 9;1, 11;1, 11;2, 12;1, 13;1, 14;1, 14;2, 15;2, 16;1, 15;3, 15;4, 16;2, 16;3, 15;1, 17;3, 17;1, 18;3, 19;3, 19;1, 18;1, 20;1, 21;1, then stars and gens. It buys the next item when affordable; otherwise it buys the cheapest generator costing ≤ 10% of IP.
+  3. Challenges: attempts IC n as soon as the guide prerequisites are owned (IC1–2 right after 7;1; IC3 after col 8; IC4 after G2; IC5–6 right after; IC7 after col 13; IC8 after col 14; IC9 right after). It abandons an attempt after 3 h and retries after 3 more Infinities. It reports each attempt.
+  4. While broken, it uses auto-infinity with a rate rule: infinite when the IP gained per minute over the run has fallen below 90% of its peak. It also re-runs challenges once after Break to set their best times.
+  5. Stars: buys SD upgrades whenever affordable, in the order 1, 3, 2, 4 (guide). It buys Star, Base or Exponent, whichever is cheapest.
+- **Output:** a milestone table matching §12, plus per-Infinity lines (index, run time, IP gained, IP total, upgrades bought).
+- **`CHECK=1`:** exits non-zero if any target or floor is missed. This is run in CI or by hand before merging.
+- **`OFFLINE=1`:** replays the campaign with random 1–8 h `simulate` gaps. It asserts that milestones land within ±15% of the active timings, which checks that the offline chunk size is honest.
+
+---
+
+## 14. Testing (`test/engine.test.js`, `node:test`)
+
+1. **Regression.** With default mods, `promoEffects`, `perRevLog`, `pendingPrestige`, `promoXp` and `lapsPerSec` equal the shipped formulas on sampled states. Existing tests keep passing.
+2. **Migration.**
+   - A v1 fixture (fresh, mid-run, post-Infinity with `ip: 1`) loads with `inf.ipLog = 0` and no `ip` key.
+   - A v2 fixture missing nested fields gets them filled with defaults.
+   - The serialize round trip keeps `-Infinity`.
+3. **IP.**
+   - The 1st Infinity gives 1 IP; the 5th gives 2.
+   - The IC4 ×2 applies from the next Infinity on.
+   - The IC count adds +1 each.
+   - Break boundaries: e3,079 gives ×1, e3,080 gives ×10, e3,388 gives ×100.
+4. **Upgrades.** Prerequisites (including the special cases 6;1 and 6;2, and column 11 depending on column 9); cost deduction; each effect changes the targeted quantity by the stated factor.
+5. **Generators.** G1 alone gives GP = `m·t` (within 1e-6 relative). A 2-tier closed form holds for small `dt`. The ×2-per-purchase rule holds. The softcap is continuous at 1e1000.
+6. **Challenges.** Each handicap is checked in isolation (e.g. IC8: `canAscend` is false; IC9: circle 4 never unlocks). Completion sets done/best and pays IP. Exit resets without IP. Challenges ignore the Break toggle.
+7. **Automation.** `autoStep` decisions on constructed states: autobuy picks the cheapest level; prestige fires on the ratio and exponent thresholds and on a stall; promote follows the order and `xFactor` and skips disabled promotions; auto-infinity respects its minimums.
+8. **Offline.**
+   - `simulate(s, 3600)` with automation versus 36,000 active 0.1 s ticks: IP and ∞ equal, score within 1 decade.
+   - An 8 h simulate completes in under 3 s.
+9. **Stars.** SD rate, GP multiplier, the star cost step sequence (e33, e36 … e87, e94 …), and the Stardust upgrade caps.
+10. **Tooltips.** Every `data-tip` key used in `ui.js` exists in `TIPS`, and every function entry returns a non-empty string on a fresh state and on a late-game fixture.
+
+---
+
+## 15. Out of scope / follow-ups
+- Eternity and everything after it.
+- Time Flux, macros, the IP Adjuster, achievements and leaderboards.
+- Autobuyers for the tree, generators and stars (Eternity milestones in the real game).
+- The dropped nodes 10;1, 17;2, 18;2, 19;2 and 20;2 (D3). Each could return later as a TUNE-gated addition.
