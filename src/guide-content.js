@@ -1,18 +1,23 @@
-// src/guide-content.js — all player-guidance copy (goals, guide sections,
-// unlock cards, glossary) as plain data. No DOM. Tuned numbers never appear
-// in the copy: they are written as {TOKENS} and filled from Engine at
-// runtime by GuideContent.fill(str, state).
+// src/guide-content.js — all player-guidance copy (overview, topics, goals,
+// unlock cards, glossary, plain-English upgrade lines) as plain data. No DOM.
+// Tuned numbers never appear in the copy: they are written as {TOKENS} and
+// filled from Engine at runtime by GuideContent.fill(str, state).
 //
 // Tokens: {INF} Infinity (score cap), {PRESTIGE_MIN} first Prestige score,
 // {PROMO_MIN} P.Mult needed for Promotion XP, {ASC_POWER} current ascension
 // power, {CAP} Red's current level cap, {UNLOCK_AT} levels bought to unlock
-// the next ring.
+// the next ring, {LTP_CAP} max boost of upgrade 5;1, {FAST_GEN_MAX} max boost
+// of upgrade 20;1.
 //
-// Extra fields beyond the shared contract (all additive):
-//   goals[id].section  — guide section for the goal's "Learn more"
-//   cards[key].section — guide section for the card's "Learn more"
-//   glossary[i].unlock — goal id after which the term is relevant (null = always)
-// A section's / term's `unlock` is the goal whose completion makes it matter:
+// Shape (Guide v2):
+//   overview            — { labels, objective, how: [{title, body}] ×4, shape, job }
+//   topics[]            — { id, group, title, summary, how[], todo[], unlock }
+//   goals[id].topic     — topic for the goal's "Learn more" (.section = alias)
+//   cards[key].topic    — topic for the card's "Learn more" (.section = alias)
+//   glossary[i].unlock  — goal id after which the term is relevant (null = always)
+//   upgradePlain[id]    — plain-English line for each Engine.UPGRADES id
+//   sections, objective — deprecated, kept only for the pre-v2 UI
+// A topic's / term's `unlock` is the goal whose completion makes it matter:
 // it opens exactly when the first goal pointing at it becomes current.
 (function () {
   'use strict';
@@ -47,370 +52,396 @@
       title: 'Buy a Red level',
       why: 'Levels make Red lap faster. Every lap earns score, and score buys more levels.',
       coach: 'This is the Red ring. Press Buy to add a level. More levels mean more laps per second, and every lap earns score.',
-      section: 'buying',
+      topic: 'buying',
     },
     readMult: {
       title: 'Meet your multipliers',
       why: 'Score per lap is every ring multiplier multiplied together. They grow as rings lap.',
       coach: 'Red’s ×mult grows a little every lap. Your score per lap is all ring mults multiplied together, so bigger mults mean much more score.',
-      section: 'mults',
+      topic: 'mults',
     },
     unlockOrange: {
       title: 'Buy {UNLOCK_AT} Red levels to unlock Orange',
       why: 'A second ring adds its own laps and its own multiplier to every lap’s score.',
       coach: 'Buying {UNLOCK_AT} levels of a ring unlocks the next one. Red starts at level 5, but only levels you buy count. Keep buying Red.',
-      section: 'buying',
+      topic: 'buying',
     },
     buyOrange: {
       title: 'Buy an Orange level',
       why: 'New rings start at level 0 and do not move. One level gets Orange lapping.',
       coach: 'Orange is unlocked but sits at level 0, so it is not moving. Buy one level to start its laps and grow its multiplier.',
-      section: 'buying',
+      topic: 'buying',
     },
     buyModes: {
       title: 'Buy in bulk',
       why: 'Buying many levels at once saves clicks. Max buys everything you can afford.',
       coach: 'Switch between ×1, ×10 and Max here (key M). Keys 1–9 and 0 buy levels for rings 1 to 10.',
-      section: 'buying',
+      topic: 'buying',
     },
     unlockGreen: {
       title: 'Unlock Green (the 4th ring)',
       why: 'Each new ring adds a multiplier to every lap. More rings means much faster growth.',
-      section: 'buying',
+      topic: 'buying',
     },
     ascendRed: {
       title: 'Get Red to level {CAP}, then Ascend it',
       why: 'Ascending sends Red back to level 5 but makes its multiplier grow ×{ASC_POWER} faster.',
-      section: 'ascension',
+      topic: 'ascension',
     },
     reachPrestige: {
       title: 'Reach {PRESTIGE_MIN} score',
       why: 'At {PRESTIGE_MIN} score you can Prestige: reset your rings for a lasting score boost.',
-      section: 'prestige',
+      topic: 'prestige',
     },
     prestige: {
       title: 'Prestige for a lasting ×P.Mult',
       why: 'P.Mult multiplies every lap’s score and is kept. Your next run grows much faster.',
-      section: 'prestige',
+      topic: 'prestige',
     },
     unlockWhite: {
       title: 'Unlock all 10 rings',
       why: 'Prestige and rebuild until you can afford every ring. White, the tenth, is the last.',
-      section: 'buying',
+      topic: 'buying',
     },
     reachPromote: {
       title: 'Grow P.Mult to ×{PROMO_MIN}',
       why: 'Prestige again and again to raise P.Mult. At ×{PROMO_MIN} you earn Promotion XP.',
-      section: 'promotions',
+      topic: 'promotions',
     },
     promote: {
       title: 'Promote once',
       why: 'Promoting resets P.Mult but gives a boost that lasts through every Prestige.',
-      section: 'promotions',
+      topic: 'promotions',
     },
     promoteAll: {
       title: 'Level all four Promotions',
       why: 'Each Promotion boosts something different. Promotion Power boosts the other three.',
-      section: 'promotions',
+      topic: 'promotions',
     },
     infinity: {
       title: 'Reach Infinity ({INF} score)',
       why: 'Infinity is the first big milestone. It pays Infinity Points (IP) for upgrades you keep.',
-      section: 'infinity',
+      topic: 'infinity',
     },
     buyGens: {
       title: 'Buy your first Infinity Upgrade',
       why: 'Infinity Generation unlocks Generators and Autobuy. Upgrades are never lost.',
-      section: 'infinity',
+      topic: 'infinity',
     },
     buyG2: {
       title: 'Buy Generator 2',
       why: 'G2 makes G1s, and G1 makes Generator Power, which speeds up every ring’s multiplier.',
-      section: 'generators',
+      topic: 'generators',
     },
     automate: {
       title: 'Buy all four automation upgrades',
       why: 'Autobuy came with Infinity Generation. Buy Auto Ascend, Auto Work and Auto Prestige in the Tree.',
-      section: 'automation',
+      topic: 'automation',
     },
     unlockIC: {
       title: 'Unlock Infinity Challenges',
       why: 'Buy the Challenges! upgrade. Each Challenge you beat gives a permanent reward and more IP.',
-      section: 'challenges',
+      topic: 'challenges',
     },
     firstIC: {
       title: 'Complete Challenge 1',
       why: 'Reach {INF} score under the Challenge’s handicap to earn its reward.',
-      section: 'challenges',
+      topic: 'challenges',
     },
     allIC: {
       title: 'Complete all 9 Challenges',
       why: 'Each one is harder than the last. Beating all nine unlocks Break Infinity.',
-      section: 'challenges',
+      topic: 'challenges',
     },
     breakInf: {
       title: 'Break Infinity',
       why: 'Once broken, your score can pass {INF}, and very high scores multiply your IP.',
-      section: 'break',
+      topic: 'break',
     },
     stars: {
       title: 'Buy A Falling Star, then a Star',
       why: 'Climb the Tree to its last upgrade. Stars make Stardust, which boosts Generator Power.',
-      section: 'stars',
+      topic: 'stars',
     },
     finale: {
       title: 'Reach {INF} IP',
       why: 'The final goal of this version. IP stops at {INF} — Eternity is coming later.',
-      section: 'finale',
+      topic: 'finale',
     },
   };
 
-  // ---------- guide sections (spec §6) ----------
+  // ---------- game overview (Guide v2 brief, approved text, verbatim) ----------
+  // Rendered inside the `overview` topic. `labels` are the bold lead-ins;
+  // each how-step renders as a bold title followed by its body.
 
-  var sections = [
+  var overview = {
+    labels: { objective: 'The objective', how: 'How you play', shape: 'The shape of the game', job: 'Your job' },
+    objective: 'reach ever-bigger score milestones, all the way to Infinity ({INF}). Each time you get there, you earn Infinity Points (IP) and your score starts over. You spend IP on permanent Infinity Upgrades, which make every run faster, automate the routine buying and resetting, and unlock new features. The game ends when your IP reaches Infinity too.',
+    how: [
+      { title: 'Rings earn score.', body: 'Dots circle ten coloured rings; every completed lap pays out score.' },
+      { title: 'Invest your score.', body: 'Spending score lowers it for now, but levels make rings lap faster and new rings add more laps, so your score climbs back faster than before.' },
+      { title: 'Multipliers compound.', body: 'Every lap also raises that ring’s multiplier, and all multipliers multiply together, so growth keeps speeding up.' },
+      { title: 'Reset at milestones.', body: 'Reaching certain scores lets you trade your whole run for a permanent boost; the next run climbs much faster and reaches the next milestone.' },
+    ],
+    shape: 'it’s built in layers. Each layer repeats that loop — invest, grow, reset for a boost — and opens the next layer, with new things to earn and buy. Later layers add automation, so the game increasingly plays itself, even while you’re away.',
+    job: 'invest well, and choose when to reset.',
+  };
+
+  // ---------- guide topics (Guide v2) ----------
+  // One topic is shown at a time: summary, "How it works" (how), "What to
+  // do" (todo). `overview` and `glossary` are summary-only: the UI renders
+  // GuideContent.overview / GuideContent.glossary inside them. A topic is
+  // hidden until its `unlock` goal is done (null = always shown).
+
+  var topics = [
     {
-      id: 'objective',
-      title: 'The goal',
-      unlock: null,
-      body: [
-        'Your goal is to grow your score to Infinity ({INF}), then go beyond it.',
-        'Rev Idle is an idle game. Your rings spin on their own and earn score, even while you are away. You spend score to make them earn faster.',
-        'Every so often you reset for power. Each new layer — Prestige, Promotions, Infinity and more — wipes some progress but gives a lasting boost, so the next climb is much faster.',
-        'The journey strip above shows where you are and what comes next. The goal card always shows your next step.',
+      id: 'overview', group: 'basics', title: 'Overview', unlock: null,
+      summary: 'What the game is about, and your next step.',
+      how: [], todo: [],
+    },
+    {
+      id: 'rings', group: 'basics', title: 'Rings, laps and score', unlock: null,
+      summary: 'How rings move, and what makes them faster.',
+      how: [
+        'Each of the ten coloured circles is a ring. A dot orbits it; one full trip around is a lap.',
+        'A ring’s level sets its speed: laps per second = level × the ring’s base speed × speed boosts.',
+        'Outer rings are slower and cost more, but each one brings its own multiplier.',
       ],
       todo: [
-        'Follow the goal card under your score. It always shows one next step.',
-        'Press “Show me” on the card to see where to click.',
-        'When something new unlocks, read its card — it explains what to do.',
+        'Watch which rings lap fastest: they pay out most often.',
       ],
     },
     {
-      id: 'circles',
-      title: 'Rings, laps and score',
-      unlock: null,
-      body: [
-        'Each coloured circle is a ring. A dot orbits each ring. One full trip around is a lap.',
-        'Every lap, on any ring, earns score. Your score is also your money: you spend it to buy levels.',
-        'A ring’s level sets its speed: laps per second = level × the ring’s base speed × speed boosts. Outer rings are slower and cost more, but each one adds a new multiplier.',
+      id: 'mults', group: 'basics', title: 'Multipliers and score per lap', unlock: null,
+      summary: 'Multipliers decide how much score each lap pays.',
+      how: [
+        'Each ring’s ×mult starts at ×1 and grows by its mult gain every lap.',
+        'Score per lap = (product of ring multipliers × P.Mult) ^ exponent. P.Mult and the exponent start at 1; later resets raise them.',
+        'Income = score per lap × laps per second, summed over all rings.',
+        'Example: Red ×3, Orange ×2, P.Mult ×10, exponent 1 → 60 per lap; at 5 laps per second, 300 score per second.',
       ],
       todo: [
-        'Buy levels to make rings lap faster.',
-        'Unlock more rings — each one multiplies your score per lap.',
-        'Hover or long-press any number to see what it means.',
+        'Level slow outer rings too, so their multipliers grow.',
       ],
     },
     {
-      id: 'mults',
-      title: 'Multipliers: how score per lap works',
-      unlock: null,
-      body: [
-        'Every ring has a multiplier (its ×mult). It starts at ×1. Each time that ring finishes a lap, its multiplier grows by its mult gain.',
-        'Score per lap = (every unlocked ring’s multiplier, multiplied together, × P.Mult) ^ exponent. P.Mult and the exponent start at 1 and grow when you Prestige.',
-        'Every lap of any ring earns that full score per lap. So your income = score per lap × laps per second (all rings added together).',
-        'Example: Red ×3, Orange ×2, P.Mult ×10, exponent 1. Score per lap = (3 × 2 × 10)^1 = 60. At 5 laps per second you earn 60 × 5 = 300 score per second.',
+      id: 'buying', group: 'basics', title: 'Levels and new rings', unlock: null,
+      summary: 'What levels cost, and how new rings open.',
+      how: [
+        'Each level costs a little more score than the one before.',
+        'Buying {UNLOCK_AT} levels of a ring unlocks the next one. Red starts at level 5, but only levels you buy count.',
+        'A new ring starts at level 0 and stays still until you buy it a level.',
       ],
       todo: [
-        'Watch the ×mult chips — they are where most of your growth comes from.',
-        'Unlock new rings: a new ring’s multiplier multiplies all the others.',
-        'Keep slow rings leveled too — their laps grow their own multiplier.',
+        'Buy Red until Orange unlocks, then work outward to White, the tenth.',
+        'Switch to Max buying once score piles up.',
       ],
     },
     {
-      id: 'buying',
-      title: 'Buying levels and unlocking rings',
-      unlock: null,
-      body: [
-        'Press a ring’s Buy button to add levels. Each level costs score, and each one costs a bit more than the last.',
-        'Buy {UNLOCK_AT} levels of a ring to unlock the next ring. Red starts at level 5, but only levels you buy count. A new ring starts at level 0, so buy it a level to get it moving.',
-        'The buy-mode switch picks ×1, ×10 or Max (as many as you can afford). Press M to cycle it. Keys 1–9 and 0 buy for rings 1 to 10.',
-        'Each ring has a level cap ({CAP} for Red right now). At the cap you can Ascend it.',
+      id: 'controls', group: 'basics', title: 'Controls and tips', unlock: null,
+      summary: 'Shortcuts and habits that save time.',
+      how: [
+        'Hover or long-press almost anything for its live numbers.',
+        'The buy-mode switch picks ×1, ×10 or Max (all you can afford); M cycles it.',
+        'Keys 1–9 and 0 buy levels for rings 1–10. ? or H opens this guide.',
+        'The game keeps running while you’re away, for up to several hours.',
       ],
       todo: [
-        'Buy Red levels until Orange unlocks, then keep going ring by ring.',
-        'Switch to Max once you have lots of score.',
-        'Aim to unlock all 10 rings — White is the last.',
+        'Unsure where to click? Press “Show me” on the goal card.',
+        'Export your save from Settings now and then.',
       ],
     },
     {
-      id: 'ascension',
-      title: 'Ascension',
-      unlock: 'unlockOrange',
-      body: [
-        'When a ring reaches its level cap ({CAP} for Red right now), an Ascend button appears on it.',
-        'Ascending sends the ring back to level 5. In return its mult gain per lap is multiplied by your ascension power (×{ASC_POWER} now), its level cap rises by 10, and its levels cost more. The multiplier it has already built is kept.',
-        'Ascensions last until your next Prestige, Promotion or Infinity.',
+      id: 'ascension', group: 'resets', title: 'Ascension', unlock: 'unlockOrange',
+      summary: 'Ascending trades a maxed ring’s levels for much faster multiplier growth.',
+      how: [
+        'At its level cap ({CAP} for Red now), a ring shows an Ascend button.',
+        'Ascending resets it to level 5 and multiplies its mult gain by your ascension power (×{ASC_POWER} now).',
+        'Its cap rises by 10 and levels cost more; the multiplier it built is kept.',
+        'Bigger resets undo Ascensions.',
       ],
       todo: [
-        'Max Red’s level, then press Ascend.',
-        'Ascend any ring that hits its cap — faster multiplier growth pays off quickly.',
-        'Rebuy levels afterwards so the ring laps fast again.',
+        'Max Red, Ascend, then buy its levels back.',
+        'Ascend every ring that hits its cap.',
       ],
     },
     {
-      id: 'prestige',
-      title: 'Prestige',
-      unlock: 'ascendRed',
-      body: [
-        'Once your score reaches {PRESTIGE_MIN}, you can Prestige on the Prestige tab.',
-        'Prestige resets your score and every ring (levels, multipliers and ascensions). In return you get P.Mult and P.Exp, based on the score you reached. Your P.Mult becomes the new value only if it’s higher — gains don’t stack. Both only go up and are kept through every Prestige; a later layer resets them.',
-        'P.Mult multiplies every lap’s score. P.Exp is the exponent on your score per lap, so even small increases matter a lot.',
-        'Each Prestige needs at least the score you last prestiged at. The Prestige tab shows what you would gain right now.',
+      id: 'prestige', group: 'resets', title: 'Prestige', unlock: 'ascendRed',
+      summary: 'Prestige resets score and rings for a lasting P.Mult and P.Exp.',
+      how: [
+        'It opens at {PRESTIGE_MIN} score on the Prestige tab; each one needs at least your last Prestige score.',
+        'Gains grow with your score. P.Mult only changes if the new value is higher — gains don’t stack.',
+        'P.Exp is the exponent on score per lap, so small increases matter a lot.',
+        'Both survive every Prestige; later layers reset them.',
       ],
       todo: [
-        'Reach {PRESTIGE_MIN} score, then open the Prestige tab.',
-        'Press Prestige, then press it again to confirm.',
-        'Prestige again when the gain shown is clearly bigger than your current P.Mult.',
+        'Press Prestige twice once the gain shown clearly beats your current P.Mult.',
       ],
     },
     {
-      id: 'promotions',
-      title: 'Promotions',
-      unlock: 'unlockWhite',
-      body: [
-        'When your P.Mult (or the P.Mult your next Prestige would give) reaches ×{PROMO_MIN}, you earn Promotion XP. More P.Mult means more XP.',
-        'On the Promote tab, promoting sets one of four Promotions to a level equal to your XP. It then resets your rings, score, P.Mult and P.Exp. You can only promote a card whose level is below your XP.',
-        'Mult Gain: bigger mult gain per lap. Lap Speed: every ring laps faster. Ascension Power: each Ascension counts for more. Promotion Power: boosts the other three.',
-        'Promotion levels are kept through every Prestige. They reset at Infinity (a Challenge reward softens this later).',
+      id: 'promotions', group: 'resets', title: 'Promotions', unlock: 'unlockWhite',
+      summary: 'Promotions are four boosts that survive every Prestige.',
+      how: [
+        'From ×{PROMO_MIN} P.Mult (current or pending) you earn Promotion XP; more P.Mult, more XP.',
+        'Promoting sets a card below your XP to your XP, then resets rings, score, P.Mult and P.Exp.',
+        'Mult Gain grows multipliers faster, Lap Speed speeds rings up, Ascension Power strengthens Ascension, and Promotion Power boosts the other three.',
       ],
       todo: [
-        'Push P.Mult to ×{PROMO_MIN} with Prestiges.',
-        'Promote a card, then rebuild with Prestiges to earn more XP.',
-        'Rotate through all four cards so each keeps rising.',
+        'Promote on the Promote tab, then Prestige back up for more XP.',
+        'Rotate through all four cards.',
       ],
     },
     {
-      id: 'infinity',
-      title: 'Infinity',
-      unlock: 'reachPromote',
-      body: [
-        'Your score cannot go past Infinity ({INF}). When it gets there, you go Infinite. The first time, a window asks you to confirm. After that it happens by itself (turn on Settings → Confirm each Infinity to be asked each time).',
-        'Going Infinite resets the whole Revolution stage: score, rings, P.Mult, P.Exp and Promotions. You earn Infinity Points (IP) and +1 Infinity (∞) — a later Challenge reward makes it +2.',
-        'IP buys Infinity Upgrades on the ∞ tab’s Tree. Upgrades, IP, Generators you bought and Challenge results are never lost.',
-        'Some upgrades grow stronger the more Infinities you have, so every Infinity helps.',
+      id: 'infinity', group: 'infinity', title: 'Going Infinite', unlock: 'reachPromote',
+      summary: 'Going Infinite resets everything so far: rings, P.Mult, P.Exp and Promotions.',
+      how: [
+        'The first one asks you to confirm; later ones happen by themselves (see Settings → Confirm each Infinity).',
+        'Each adds 1 to your Infinities (∞) count, which several upgrades grow with.',
+        'Upgrades are on the ∞ tab’s Tree; most need one from the column before.',
+        'IP and Infinity Upgrades are never lost.',
       ],
       todo: [
-        'Reach {INF} score and press Go Infinite.',
-        'Open the ∞ tab and buy Infinity Generation first.',
-        'Keep going Infinite to collect IP for the next upgrades.',
+        'Go Infinite, then buy Infinity Generation on the ∞ tab.',
+        'Keep going Infinite to collect IP.',
       ],
     },
     {
-      id: 'generators',
-      title: 'Generators',
-      unlock: 'buyGens',
-      body: [
-        'Generators (∞ → Gens) are bought with IP. G1 makes Generator Power (GP). G2 makes G1s, G3 makes G2s, and so on up to G10.',
-        'GP multiplies every ring’s mult gain per lap, so rings build multipliers much faster.',
-        'Each Generator you buy doubles that tier’s output. Bought Generators are kept. GP and the Generators they produce reset at each Infinity, so a run speeds up as it goes.',
+      id: 'generators', group: 'infinity', title: 'Generators', unlock: 'buyGens',
+      summary: 'Generators, bought with IP, build Generator Power (GP) during each Infinity.',
+      how: [
+        'G1 makes GP. G2 makes G1s, G3 makes G2s, and so on up to G10.',
+        'GP multiplies every ring’s mult gain, so multipliers climb faster as a run goes on.',
+        'Each Generator you buy doubles that tier’s output. Bought ones are kept; GP and produced ones reset each Infinity.',
       ],
       todo: [
-        'Buy G2 as soon as you can afford it.',
-        'Spend spare IP on the cheapest useful Generator or Tree upgrade.',
-        'Watch the GP boost on the ∞ tab grow during a run.',
+        'Buy G2 on ∞ → Gens as soon as you can.',
+        'Spend spare IP on the cheapest useful Generator or upgrade.',
       ],
     },
     {
-      id: 'automation',
-      title: 'Automation',
-      unlock: 'buyGens',
-      body: [
-        'Tree upgrades unlock automations: Autobuy (buys levels), Auto-Ascend, Auto-Promote and Auto-Prestige. Auto-Infinity comes later and works only after Break.',
-        'Set them up on ∞ → Auto. You can choose which rings they touch and when they act.',
-        'With all four on, each run to Infinity plays itself. That is how the game is meant to be played from here: check in, spend IP, let it run.',
+      id: 'automation', group: 'infinity', title: 'Automating runs', unlock: 'buyGens',
+      summary: 'Tree upgrades unlock helpers that do the routine parts of each run for you.',
+      how: [
+        'Autobuy buys levels. Auto-Ascend, Auto-Promote and Auto-Prestige do what their names say.',
+        'Set each one up on ∞ → Auto: which rings it touches and when it acts.',
+        'A fifth helper, Auto-Infinity, comes much later.',
       ],
       todo: [
         'Buy Auto Ascend, Auto Work and Auto Prestige in the Tree.',
-        'Check ∞ → Auto to see each automation is on.',
-        'Let runs play out and come back to spend IP.',
+        'Check in now and then to spend IP while runs play out.',
       ],
     },
     {
-      id: 'challenges',
-      title: 'Infinity Challenges',
-      unlock: 'automate',
-      body: [
-        'The Challenges! upgrade unlocks nine Infinity Challenges (∞ → ICs). Each one adds a handicap. You complete it by reaching {INF} score while it is on.',
-        'Starting a Challenge resets your current run with no IP. You can leave at any time, which resets the run again.',
-        'Each completed Challenge gives a permanent reward and raises the IP you earn from every Infinity. You must beat them in order.',
+      id: 'challenges', group: 'infinity', title: 'Infinity Challenges', unlock: 'automate',
+      summary: 'Nine Challenges each add a handicap; reach {INF} score despite it for a permanent reward.',
+      how: [
+        'The Challenges! upgrade unlocks them on ∞ → ICs. They must be beaten in order.',
+        'Starting or leaving a Challenge resets your run without paying IP.',
+        'Each one beaten gives its reward and raises the IP from every Infinity.',
         'Beating all nine unlocks Break Infinity.',
       ],
       todo: [
-        'Buy Challenges! in the Tree, then start Challenge 1.',
-        'Let automation run inside the Challenge — some take hours.',
-        'Replay a finished Challenge later to beat your best time.',
+        'Start Challenge 1 and let automation run; some take hours.',
+        'Replay finished Challenges later to beat your best times.',
       ],
     },
     {
-      id: 'break',
-      title: 'Break Infinity',
-      unlock: 'allIC',
-      body: [
-        'After all nine Challenges, a Break card appears on ∞ → ICs. Break lets your score pass {INF}. Fix puts the limit back.',
-        'While broken, you choose when to go Infinite with the Go Infinite button. Far past {INF}, your score multiplies the IP you earn, and the bar on the Prestige tab shows the next boost.',
-        'Auto-Infinity works only while broken. Challenges always stop at {INF}.',
+      id: 'break', group: 'infinity', title: 'Break Infinity', unlock: 'allIC',
+      summary: 'Break lets your score pass {INF}, and scores far beyond it multiply your IP.',
+      how: [
+        'Press Break on ∞ → ICs. Fix puts the limit back.',
+        'While broken, you choose when to go Infinite. The bar on the Prestige tab shows the next IP boost.',
+        'Auto-Infinity works only while broken, and Challenges still stop at {INF}.',
       ],
       todo: [
-        'Press Break on ∞ → ICs.',
         'Set up Auto-Infinity once you own it.',
-        'Let runs grow past {INF} for bigger IP, then save up for Stars.',
+        'Save IP for the Tree’s final upgrade.',
       ],
     },
     {
-      id: 'stars',
-      title: 'Stars and Stardust',
-      unlock: 'breakInf',
-      body: [
-        'The last Tree upgrade, A Falling Star, unlocks Stars (∞ → Stars). Stars cost IP, and each one costs more.',
-        'Stars make Stardust every second. Stardust boosts Generator Power. You also spend it on four Stardust upgrades, which are kept.',
-        'Stardust itself resets at each Infinity, so spend it before you go Infinite. You can also buy upgrades that raise how much Stardust each Star makes and how strongly it boosts GP.',
+      id: 'stars', group: 'infinity', title: 'Stars and Stardust', unlock: 'breakInf',
+      summary: 'Stars, bought with IP, make Stardust every second.',
+      how: [
+        'A Falling Star unlocks them on ∞ → Stars. Each Star costs more than the last.',
+        'Stardust boosts Generator Power and buys four Stardust upgrades, which are kept.',
+        'Stardust itself resets at each Infinity.',
       ],
       todo: [
-        'Buy A Falling Star, then your first Star.',
-        'Spend Stardust on its upgrades before each Infinity.',
+        'Spend Stardust on its upgrades before every Infinity.',
         'Keep buying Stars as IP allows.',
       ],
     },
     {
-      id: 'finale',
-      title: 'The finale',
-      unlock: 'stars',
-      body: [
-        'The final goal of this version is {INF} IP. IP cannot go past that.',
-        'When you reach it, the game says so. You can keep playing, but the next layer, Eternity, is not in this version yet.',
+      id: 'finale', group: 'infinity', title: 'The finale', unlock: 'stars',
+      summary: 'IP stops at {INF}, and the game marks the moment you get there.',
+      how: [
+        'You can keep playing afterwards.',
+        'The next layer, Eternity, is not in this version yet.',
       ],
       todo: [
-        'Keep buying Stars and Stardust upgrades to raise your IP.',
-        'Check in, spend IP, and let automation do the rest.',
+        'Push IP up with more Stars and Stardust upgrades.',
       ],
     },
     {
-      id: 'glossary-intro',
-      title: 'Glossary',
-      unlock: null,
-      body: [
-        'Short definitions of every game term. New terms appear here as you unlock them.',
-      ],
-      todo: [
-        'Look up any word you do not recognise.',
-        'Hover or long-press a number in the game for its live value.',
-      ],
-    },
-    {
-      id: 'tips',
-      title: 'Tips and controls',
-      unlock: null,
-      body: [
-        'Hover (or long-press on touch) almost anything to see a tooltip with live numbers.',
-        'Keys: M cycles the buy mode. 1–9 and 0 buy levels for rings 1 to 10. ? or H opens this guide.',
-        'The game keeps running while you are away, for up to several hours, and catches up when you return. Save backups from Settings → Export.',
-      ],
-      todo: [
-        'Use Max buy with the number keys to spend fast.',
-        'Resets like Prestige ask for a second press to confirm.',
-        'Export your save now and then as a backup.',
-      ],
+      id: 'glossary', group: 'reference', title: 'Glossary', unlock: null,
+      summary: 'Short definitions of every term you have met so far.',
+      how: [], todo: [],
     },
   ];
+
+  // Compatibility alias for the pre-v2 UI (src/guide.js): the old section
+  // shape, { id, title, unlock, body: [paragraphs], todo }.
+  var sections = topics.map(function (t) {
+    return { id: t.id, title: t.title, unlock: t.unlock, body: [t.summary].concat(t.how), todo: t.todo.slice() };
+  });
+
+  // ---------- plain-English Infinity Upgrade descriptions ----------
+  // One line per Engine.UPGRADES id, ≤ 70 chars once filled. The exact
+  // formula stays in Engine.UPGRADES[i].desc (shown as the tooltip).
+  // "This Infinity" = time since your last Infinity (Engine s.inf.t).
+  // "Challenge records" = best times over all nine Challenges (Engine ctf,
+  // which is 1 until all nine are done).
+
+  var upgradePlain = {
+    '1;1': 'Unlocks Generators (1 free G1) and Autobuy; G1 × your Infinities',
+    '2;1': 'Score exponent +0.01: every lap pays a bit more',
+    '2;2': 'Unlocks Auto-Ascend: ascends rings at their cap for you',
+    '3;1': 'All rings lap 10% faster',
+    '3;2': 'Unlocks Auto-Promote: promotes for you',
+    '4;1': 'All rings lap 20% faster',
+    '5;1': 'More P.Mult per Prestige the longer this Infinity runs (up to ×{LTP_CAP})',
+    '5;2': 'More P.Exp per Prestige; grows with your Infinities',
+    '5;3': 'Unlocks Auto-Prestige: prestiges for you when it pays off',
+    '6;1': 'Ascension power +2: each Ascension boosts mult gain more',
+    '6;2': 'Ascension power up a little; grows with your Infinities',
+    '7;1': 'Unlocks Infinity Challenges: nine handicapped runs with rewards',
+    '8;1': 'G1 stronger the longer this Infinity runs',
+    '8;2': 'G1 stronger the more Generator Power you have',
+    '8;3': 'G1 5× stronger',
+    '9;1': 'G2 stronger the longer this Infinity runs',
+    '9;2': 'G2 3× stronger',
+    '11;1': 'G1 stronger the more IP you have',
+    '11;2': 'G2 stronger the more IP you have',
+    '12;1': 'G2 stronger with every Infinity you have',
+    '13;1': 'Ascension power +1',
+    '14;1': 'Mult Gain Promotion stronger the higher its level',
+    '14;2': 'Generator Power boosts ring mult gain more strongly',
+    '15;1': 'Unlocks Auto-Infinity: goes Infinite for you (needs Break)',
+    '15;2': 'More IP per Infinity; bigger the faster your Challenge records',
+    '15;3': 'G1 stronger; bigger the faster your Challenge records',
+    '15;4': 'G2 stronger; bigger the faster your Challenge records',
+    '16;1': 'More IP per Infinity; grows with your Infinities',
+    '16;2': 'Ascension power up more; grows with your Infinities',
+    '16;3': 'Promotion Power stronger if your Challenge 9 record is fast',
+    '17;1': 'G3 stronger with every Infinity you have',
+    '17;3': 'G1 10× stronger',
+    '18;1': 'Earn Infinities every second; more if your fastest Infinity is quick',
+    '18;3': 'G3 stronger for every G2 you have bought',
+    '19;1': 'Generator Power boosts ring mult gain even more strongly',
+    '19;3': 'All rings lap 3× faster',
+    '20;1': 'All Generators stronger if your fastest Infinity is quick (max ×{FAST_GEN_MAX})',
+    '21;1': 'Unlocks Stars: buy them with IP to make Stardust',
+  };
 
   // ---------- unlock cards (spec §7) ----------
 
@@ -421,7 +452,7 @@
       why: 'Faster multiplier growth is the main way to push your score higher before Prestige.',
       todo: 'Press Ascend on the maxed ring, then buy its levels back.',
       goal: 'ascendRed',
-      section: 'ascension',
+      topic: 'ascension',
     },
     prestigeSeen: {
       title: 'Prestige ready',
@@ -429,7 +460,7 @@
       why: 'Each Prestige makes the next climb much faster. It is the path toward Infinity.',
       todo: 'Open the Prestige tab, check the gain, then press Prestige twice to confirm.',
       goal: 'prestige',
-      section: 'prestige',
+      topic: 'prestige',
     },
     promoSeen: {
       title: 'Promotions ready',
@@ -437,7 +468,7 @@
       why: 'Promotions survive every Prestige. They boost mult gain, lap speed, Ascension and each other.',
       todo: 'Open the Promote tab and promote one card. It resets P.Mult, so Prestige again after.',
       goal: 'promote',
-      section: 'promotions',
+      topic: 'promotions',
     },
     infinitySeen: {
       title: 'Infinity reached',
@@ -445,7 +476,7 @@
       why: 'You earn Infinity Points (IP) to buy upgrades that are never lost.',
       todo: 'Press Go Infinite, then open the new ∞ tab.',
       goal: 'infinity',
-      section: 'infinity',
+      topic: 'infinity',
     },
     infTabSeen: {
       title: 'The ∞ tab',
@@ -453,7 +484,7 @@
       why: 'These upgrades are how you get stronger from now on — every run to Infinity gets faster.',
       todo: 'Buy Infinity Generation, the first upgrade in the Tree.',
       goal: 'buyGens',
-      section: 'infinity',
+      topic: 'infinity',
     },
     gensSeen: {
       title: 'Generators online',
@@ -461,7 +492,7 @@
       why: 'GP multiplies every ring’s mult gain per lap, so runs speed up as they go.',
       todo: 'Open ∞ → Gens and buy Generator 2 when you can afford it.',
       goal: 'buyG2',
-      section: 'generators',
+      topic: 'generators',
     },
     autoSeen: {
       title: 'Automation unlocked',
@@ -469,7 +500,7 @@
       why: 'With automation, runs to Infinity play themselves while you spend IP.',
       todo: 'Check ∞ → Auto, then buy the other automation upgrades in the Tree.',
       goal: 'automate',
-      section: 'automation',
+      topic: 'automation',
     },
     icSeen: {
       title: 'Infinity Challenges unlocked',
@@ -477,7 +508,7 @@
       why: 'Each one gives a permanent reward and more IP per Infinity. All nine unlock Break Infinity.',
       todo: 'Open ∞ → ICs and start Challenge 1.',
       goal: 'firstIC',
-      section: 'challenges',
+      topic: 'challenges',
     },
     breakSeen: {
       title: 'Break Infinity available',
@@ -485,7 +516,7 @@
       why: 'Scores far past {INF} multiply the IP you earn, which you need for Stars.',
       todo: 'Press Break on ∞ → ICs.',
       goal: 'breakInf',
-      section: 'break',
+      topic: 'break',
     },
     starsSeen: {
       title: 'Stars unlocked',
@@ -493,7 +524,7 @@
       why: 'Stars drive your IP toward the final goal of {INF} IP.',
       todo: 'Open ∞ → Stars and buy your first Star. Spend Stardust before each Infinity.',
       goal: 'stars',
-      section: 'stars',
+      topic: 'stars',
     },
   };
 
@@ -502,7 +533,7 @@
   var glossary = [
     { term: 'Ring', unlock: null, def: 'One of the ten coloured circles, Red to White. Each has a dot that orbits it.' },
     { term: 'Lap', unlock: null, def: 'One full trip of a ring’s dot around its circle. Every lap earns score.' },
-    { term: 'Score', unlock: null, def: 'What laps earn. You spend it on levels, and reaching score targets unlocks resets.' },
+    { term: 'Score', unlock: null, def: 'What rings earn. You spend it on upgrades, and reaching score milestones unlocks resets.' },
     { term: 'Level', unlock: null, def: 'How fast a ring spins. Laps per second = level × the ring’s base speed × speed boosts.' },
     { term: 'Level cap', unlock: null, def: 'The highest level a ring can reach ({CAP} for Red right now). Ascending raises it.' },
     { term: 'Laps per second', unlock: null, def: 'How often a ring completes a lap. Your income adds these up across all rings.' },
@@ -521,7 +552,7 @@
     { term: 'Promotion', unlock: 'unlockWhite', def: 'One of four boosts (Mult Gain, Lap Speed, Ascension Power, Promotion Power). Promoting resets P.Mult.' },
     { term: 'Promotion XP', unlock: 'unlockWhite', def: 'Earned once P.Mult reaches ×{PROMO_MIN}. Promoting sets one Promotion’s level to your XP.' },
     { term: 'Infinity', unlock: 'reachPromote', def: 'The score limit, {INF}. Going Infinite resets the Revolution stage for IP.' },
-    { term: 'IP', unlock: 'reachPromote', def: 'Infinity Points, earned by going Infinite. Spent on upgrades, Generators and Stars. Never lost.' },
+    { term: 'Infinity Points (IP)', unlock: 'reachPromote', def: 'Earned each time your score reaches Infinity; spent on permanent Infinity Upgrades.' },
     { term: 'Infinities (∞)', unlock: 'reachPromote', def: 'How many times you have gone Infinite. Several upgrades grow stronger with more.' },
     { term: 'Infinity Upgrade', unlock: 'reachPromote', def: 'A permanent boost bought with IP on the ∞ tab’s Tree. Most need an upgrade from an earlier column first.' },
     { term: 'Generator', unlock: 'buyGens', def: 'Bought with IP. G1 makes GP; every higher Generator makes more of the one below it.' },
@@ -547,6 +578,8 @@
     ASC_POWER: function (E, s) { return fmtPlain(E, E.promoEffects(s).p3); },
     CAP: function (E, s) { return String(E.levelCap(s.circles[0])); },
     UNLOCK_AT: function () { return '5'; }, // engine.js buy(): 5 levels bought unlock the next ring
+    LTP_CAP: function (E) { return String(E.TUNE.u51Cap); }, // 5;1 Long Term Prestiging cap
+    FAST_GEN_MAX: function (E) { return fmtPlain(E, Math.sqrt(E.TUNE.u201Cap)); }, // 20;1 max multiplier
   };
 
   function fill(str, s) {
@@ -560,11 +593,18 @@
     });
   }
 
+  // `section` is kept as a deprecated alias of `topic` for the pre-v2 UI.
+  Object.keys(goals).forEach(function (k) { goals[k].section = goals[k].topic; });
+  Object.keys(cards).forEach(function (k) { cards[k].section = cards[k].topic; });
+
   var GuideContent = {
-    objective: objective,
+    objective: objective, // deprecated: pre-v2 intro/guide header only
+    overview: overview,
     stages: stages,
     goals: goals,
-    sections: sections,
+    topics: topics,
+    sections: sections, // deprecated alias of topics in the old shape
+    upgradePlain: upgradePlain,
     cards: cards,
     glossary: glossary,
     fill: fill,
