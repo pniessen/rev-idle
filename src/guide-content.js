@@ -210,7 +210,7 @@
       summary: 'Multipliers decide how much score each lap pays.',
       how: [
         'Each ring’s ×mult starts at ×1 and grows every lap.',
-        'Score per lap = (product of ring multipliers × P.Mult) ^ exponent. Every lap of any ring earns this.',
+        'Score per lap = (product of ring multipliers × P.Mult) ^ exponent. P.Mult is a bonus multiplier and the exponent is a power; both start at 1 and later resets raise them.',
         'Income = score per lap × laps per second, summed over all rings.',
       ],
       todo: [
