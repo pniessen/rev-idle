@@ -20,7 +20,6 @@
   var currentTab = 'circles';
   var dirty = true;
   var lastVisibleTabIds = '';
-  var lastInfinityFlag = false;
   var modalOpen = null; // 'offline' | 'infinity' | null
 
   var els = {};
@@ -158,7 +157,7 @@
 
   function showOfflineModal(info) {
     modalOpen = 'offline';
-    var gainLog = info.after;
+    var gainLog = info.before === -Infinity ? info.after : Engine.logSub(info.after, info.before);
     var panel = el('div', { class: 'modal-panel' }, [
       el('h2', { class: 'modal-title' }, ['While you were away']),
       el('p', { class: 'help' }, [
@@ -173,6 +172,14 @@
     showModal(panel);
   }
 
+  function doGoInfinite() {
+    if (Engine.goInfinite(state)) {
+      toast('Infinity reached \u2014 welcome back');
+      hideModal();
+      markDirty();
+    }
+  }
+
   function showInfinityModal() {
     modalOpen = 'infinity';
     var s = state.stats;
@@ -184,19 +191,13 @@
       ]),
       el('div', { class: 'kv-list' }, [
         statLine('Play time', fmtTime(s.playTime)),
-        statLine('Total laps', fmt(Math.log10(Math.max(1, s.totalLaps)))),
+        statLine('Total laps', String(s.totalLaps)),
         statLine('Prestiges', String(s.prestiges)),
         statLine('Promotions', String(s.promotions)),
       ]),
       el('button', {
         class: 'btn primary full-width',
-        onclick: function () {
-          if (Engine.goInfinite(state)) {
-            toast('Infinity reached \u2014 welcome back');
-            hideModal();
-            markDirty();
-          }
-        },
+        onclick: doGoInfinite,
       }, ['Go Infinite']),
     ]);
     showModal(panel);
@@ -404,9 +405,11 @@
       return;
     }
     var preview = buyPreview(i, buyMode);
-    var n = buyMode === 'max' ? preview.count : Number(buyMode);
     var costLog = preview.count > 0 ? preview.totalCostLog : Engine.costLog(state, i);
-    var labelN = buyMode === 'max' ? (preview.count > 0 ? preview.count : 'Max') : n;
+    // Show the actual affordable count (which may be less than the buy
+    // mode's target, e.g. only 3 affordable in x10 mode) rather than always
+    // claiming the mode's nominal count.
+    var labelN = preview.count > 0 ? preview.count : (buyMode === 'max' ? 'Max' : Number(buyMode));
     btn.textContent = 'Buy \u00D7' + labelN + ' \u2014 ' + fmt(costLog);
     btn.disabled = preview.count === 0;
     btn.classList.toggle('affordable', preview.count > 0);
@@ -437,6 +440,14 @@
     wrap.appendChild(el('p', { class: 'help' }, [
       'Reset your circles for a permanent multiplier and exponent boost based on your score.',
     ]));
+
+    if (Engine.canInfinity(state)) {
+      wrap.appendChild(el('button', {
+        id: 'prestige-infinity-btn',
+        class: 'btn primary full-width',
+        onclick: doGoInfinite,
+      }, ['Go Infinite']));
+    }
 
     var reqLog = Math.max(Engine.TUNE.prestigeMinLog, state.prestigeReqLog);
     wrap.appendChild(el('div', { id: 'prestige-req', class: 'stat-line' }, [
@@ -478,6 +489,10 @@
     if (pending) pending.textContent = pendingPrestigeText();
     var btn = root.querySelector('#prestige-btn');
     if (btn) btn.disabled = !Engine.canPrestige(state);
+    var infinityBtn = root.querySelector('#prestige-infinity-btn');
+    if (Engine.canInfinity(state) && !infinityBtn) {
+      markDirty(); // re-render to insert the Go Infinite button
+    }
   }
 
   // ---------- promote tab ----------
@@ -670,6 +685,8 @@
   // ---------- keyboard ----------
 
   function onKeyDown(e) {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (modalOpen) return;
     var tag = (e.target && e.target.tagName) || '';
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
     if (e.key === 'm' || e.key === 'M') {
@@ -719,10 +736,10 @@
 
   function checkInfinity() {
     var can = Engine.canInfinity(state);
-    if (can && !lastInfinityFlag && !modalOpen) {
+    if (els.infinityBtn) els.infinityBtn.style.display = can ? '' : 'none';
+    if (can && !modalOpen) {
       showInfinityModal();
     }
-    lastInfinityFlag = can;
   }
 
   // ---------- main loop ----------
@@ -778,6 +795,15 @@
     els.modal = document.getElementById('modal');
     els.toast = document.getElementById('toast');
     canvas = document.getElementById('orbits');
+
+    els.scorebox = document.getElementById('scorebox');
+    els.infinityBtn = el('button', {
+      id: 'infinity-btn',
+      class: 'btn primary',
+      style: 'display:none',
+      onclick: doGoInfinite,
+    }, ['Go Infinite']);
+    if (els.scorebox) els.scorebox.appendChild(els.infinityBtn);
   }
 
   function init(offlineInfo) {
@@ -793,7 +819,24 @@
     document.addEventListener('keydown', onKeyDown);
     window.addEventListener('hashchange', syncFromHash);
     document.addEventListener('visibilitychange', function () {
-      if (document.hidden) save();
+      if (document.hidden) {
+        save();
+      } else {
+        var hiddenSec = Math.min((Date.now() - state.savedAt) / 1000, OFFLINE_CAP_SEC);
+        if (hiddenSec > 0) {
+          var sim = Engine.simulate(state, hiddenSec);
+          if (hiddenSec > 10 && !modalOpen) {
+            showOfflineModal({ seconds: hiddenSec, before: sim.scoreLogBefore, after: sim.scoreLogAfter });
+          }
+          state.savedAt = Date.now();
+          save();
+          markDirty();
+        }
+        // Reset the frame clock so the next rAF frame doesn't see a huge dt
+        // (which frame() clamps to 0.25s anyway) on top of the time we just
+        // simulated here.
+        lastFrame = 0;
+      }
     });
 
     syncFromHash();
@@ -803,7 +846,6 @@
     dirty = false;
     updateScorebox();
     renderMultbar();
-    lastInfinityFlag = Engine.canInfinity(state);
 
     if (offlineInfo) {
       showOfflineModal(offlineInfo);
@@ -831,6 +873,8 @@
       if (offlineSec > 10) {
         var sim = Engine.simulate(state, offlineSec);
         offlineInfo = { seconds: offlineSec, before: sim.scoreLogBefore, after: sim.scoreLogAfter };
+        state.savedAt = Date.now();
+        save();
       }
     }
 
@@ -841,6 +885,7 @@
 
   if (window.claude && window.claude.hot && typeof window.claude.hot.snapshot === 'function') {
     window.claude.hot.snapshot(function () {
+      state.savedAt = Date.now();
       return { save: Engine.serialize(state) };
     });
   }

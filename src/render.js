@@ -108,7 +108,7 @@
     }
 
     function resize() {
-      dpr = window.devicePixelRatio || 1;
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
       var w = canvas.clientWidth || canvas.width || 1;
       var h = canvas.clientHeight || canvas.height || 1;
       width = w;

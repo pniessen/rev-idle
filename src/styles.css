@@ -134,6 +134,11 @@ button, input, textarea {
   margin-top: 2px;
 }
 
+#infinity-btn {
+  pointer-events: auto;
+  margin-top: 10px;
+}
+
 /* ---------- panel / tabs ---------- */
 
 #panel {
