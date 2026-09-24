@@ -7672,18 +7672,26 @@ if (typeof module !== 'undefined' && module.exports) {
           save();
         }
       } else {
-        var hiddenSec = Math.min((Date.now() - state.savedAt) / 1000, OFFLINE_CAP_SEC);
-        if (catchingUp || hiddenSec < 1) {
-          // Under a second (a quick tab flick): nothing worth catching up.
-        } else if (hiddenSec <= 10) {
-          // A short hide is simulated in one go without the overlay, so it
-          // never flashes over (or closes) an open modal; no summary.
-          Engine.simulate(state, hiddenSec);
+        // Defensive guard: if savedAt is invalid (0 or unset), it means this
+        // state was never properly initialized (e.g. opened in a background tab
+        // before any regular visibility cycle). Avoid granting free offline time
+        // by treating it as a fresh state, and skip catch-up.
+        if (!(state.savedAt > 0)) {
           state.savedAt = Date.now();
-          save();
-          markDirty();
         } else {
-          runCatchup(hiddenSec, showOrQueueOfflineModal);
+          var hiddenSec = Math.min((Date.now() - state.savedAt) / 1000, OFFLINE_CAP_SEC);
+          if (catchingUp || hiddenSec < 1) {
+            // Under a second (a quick tab flick): nothing worth catching up.
+          } else if (hiddenSec <= 10) {
+            // A short hide is simulated in one go without the overlay, so it
+            // never flashes over (or closes) an open modal; no summary.
+            Engine.simulate(state, hiddenSec);
+            state.savedAt = Date.now();
+            save();
+            markDirty();
+          } else {
+            runCatchup(hiddenSec, showOrQueueOfflineModal);
+          }
         }
         // Reset the frame clock so the next rAF frame doesn't see a huge dt
         // (which frame() clamps to 0.25s anyway) on top of the time we just
@@ -7788,7 +7796,12 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
-    if (!state) state = Engine.newState();
+    if (!state) {
+      state = Engine.newState();
+      // A fresh state with no prior save must have a valid savedAt so that
+      // future visibilitychange events can correctly compute elapsed time.
+      state.savedAt = Date.now();
+    }
 
     init(offlineInfo, hadSave);
   }
