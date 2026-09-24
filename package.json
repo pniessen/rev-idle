@@ -5,6 +5,7 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "build": "node build.mjs",
-    "sim": "node test/sim.js"
+    "sim": "node test/sim.js",
+    "sim:layer": "MODE=layer node test/sim.js"
   }
 }
