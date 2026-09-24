@@ -62,3 +62,108 @@ test('fmtLog groups large exponents', () => {
   assert.equal(E.fmtLog(308.25), '1.78e308');
   assert.equal(E.fmtLog(12345.5), '3.16e12,345');
 });
+
+function withMods(over, fn) {
+  const saved = E._hooks.mods;
+  E.registerHooks({ mods: () => Object.assign({}, E.DEFAULT_MODS, over) });
+  try { fn(); } finally { E.registerHooks({ mods: saved }); }
+}
+
+test('fresh state mods equal DEFAULT_MODS', () => {
+  assert.deepEqual(E.mods(E.newState()), E.DEFAULT_MODS);
+  assert.ok(Object.isFrozen(E.DEFAULT_MODS));
+});
+
+test('default mods keep shipped promotion formulas', () => {
+  const s = E.newState(); s.promo = [4, 9, 16, 25];
+  const p = E.promoEffects(s);
+  const p4 = 1 + 0.05 * Math.pow(25, 0.48);
+  close(p.p4, p4);
+  close(p.p1, p4 * (Math.floor(Math.pow(4, 1.5)) + 1));
+  close(p.p2, p4 * (1 + Math.sqrt(9)));
+  close(p.p3, p4 * (10 + Math.pow(16, 0.82)));
+});
+
+test('mods.lapMult scales lapsPerSec', () => {
+  const s = E.newState(); const base = E.lapsPerSec(s, 0);
+  withMods({ lapMult: 2 }, () => close(E.lapsPerSec(s, 0), 2 * base));
+});
+
+test('mods.expAdd and prodLog enter perRevLog', () => {
+  const s = E.newState(); s.circles[0].multLog = 2; s.pMult = 10; s.pExp = 1.5;
+  withMods({ expAdd: 0.5, prodLog: 1 }, () => close(E.perRevLog(s), 2.0 * (2 + 1 + 1)));
+  withMods({ expAdd: -5 }, () => close(E.perRevLog(s), 0.1 * (2 + 1)));
+});
+
+test('mods.gainLog enters multGainPerLapLog', () => {
+  const s = E.newState(); const base = E.multGainPerLapLog(s, 0);
+  close(base, E.TUNE.multGainLog0);
+  withMods({ gainLog: 3 }, () => close(E.multGainPerLapLog(s, 0), base + 3));
+});
+
+test('pMultMult, pExpMult, gainPow enter pendingPrestige and promoXp', () => {
+  const s = E.newState(); s.scoreLog = 20;
+  const raw = E.pendingPrestige(s);
+  withMods({ pMultMult: 2, pExpMult: 3, gainPow: 0.5 }, () => {
+    const g = E.pendingPrestige(s);
+    close(g.pMult, Math.pow(raw.pMult * 2, 0.5));
+    close(g.pExp, 1 + (raw.pExp - 1) * 3 * 0.5);
+  });
+  s.scoreLog = -Infinity; s.pMult = 16 * E.TUNE.promoMin;
+  withMods({ gainPow: 0.4 }, () => assert.equal(E.promoXp(s), Math.floor(Math.pow(Math.pow(16, E.TUNE.promoPow), 0.4))));
+});
+
+test('disabled promotions read as level 0 and cannot be chosen', () => {
+  const s = E.newState(); s.promo = [4, 9, 16, 25]; s.pMult = 1e9;
+  withMods({ disabledPromo: [1, 3] }, () => {
+    const p = E.promoEffects(s);
+    close(p.p4, 1); close(p.p2, 1);
+    assert.ok(!E.canPromote(s, 1)); assert.ok(!E.canPromote(s, 3)); assert.ok(E.canPromote(s, 0));
+  });
+});
+
+test('ascBase, ascMult and v scale p3', () => {
+  const s = E.newState(); s.promo = [0, 0, 16, 0];
+  withMods({ ascBase: 12, ascMult: 2, v: [1, 1, 0.5, 1] }, () => close(E.promoEffects(s).p3, (12 + Math.pow(16, 0.82) * 0.5) * 2));
+});
+
+test('maxCircles stops the unlock chain; noAscend blocks ascension', () => {
+  const s = E.newState();
+  for (let i = 0; i < 4; i++) { s.circles[i].unlocked = true; s.circles[i].bought = 4; s.circles[i].level = 4; }
+  s.scoreLog = 50;
+  withMods({ maxCircles: 4 }, () => { E.buy(s, 3, 1); assert.ok(!s.circles[4].unlocked); });
+  s.circles[0].level = 100;
+  withMods({ noAscend: true }, () => assert.ok(!E.canAscend(s, 0)));
+  assert.ok(E.canAscend(s, 0));
+});
+
+test('decay shrinks colour mult logs toward 0', () => {
+  const s = E.newState(); s.circles[1].unlocked = true; s.circles[1].level = 0; s.circles[1].multLog = 10;
+  withMods({ decay: 0.01 }, () => E.tick(s, 1));
+  close(s.circles[1].multLog, 9.9);
+});
+
+test('score capped at INFINITY_LOG unless broken outside a challenge', () => {
+  const s = E.newState(); s.scoreLog = 400; E.tick(s, 0.01); assert.equal(s.scoreLog, E.INFINITY_LOG);
+  const b = E.newState(); b.inf.broken = true; b.scoreLog = 400; E.tick(b, 0.01); assert.ok(b.scoreLog >= 400);
+  const c = E.newState(); c.inf.broken = true; c.inf.ic.active = 3; c.scoreLog = 400; E.tick(c, 0.01);
+  assert.equal(c.scoreLog, E.INFINITY_LOG);
+  assert.ok(!E.isFixed(b)); assert.ok(E.isFixed(c)); assert.ok(E.isFixed(s));
+});
+
+test('timers advance; prestige and promote reset tRun and the stall tracker', () => {
+  const s = E.newState();
+  E.tick(s, 0.5); close(s.inf.t, 0.5); close(s.inf.tRun, 0.5);
+  s.scoreLog = 10; s.inf.rt = { markLog: 9, markT: 0.3 };
+  assert.ok(E.prestige(s));
+  assert.equal(s.inf.tRun, 0); assert.deepEqual(s.inf.rt, { markLog: -Infinity, markT: 0 }); close(s.inf.t, 0.5);
+  E.tick(s, 0.25); s.pMult = 16 * E.TUNE.promoMin;
+  assert.ok(E.promote(s, 0)); assert.equal(s.inf.tRun, 0);
+});
+
+test('registerHooks runs preTick, auto, postTick in order', () => {
+  const saved = Object.assign({}, E._hooks); const seen = [];
+  E.registerHooks({ preTick: () => seen.push('pre'), auto: () => seen.push('auto'), postTick: () => seen.push('post') });
+  try { E.tick(E.newState(), 0.1); } finally { E.registerHooks(saved); }
+  assert.deepEqual(seen, ['pre', 'auto', 'post']);
+});

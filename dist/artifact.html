@@ -578,6 +578,26 @@ const Engine = (() => {
     multGainLog0: Math.log10(0.04),
   };
 
+  const DEFAULT_MODS = Object.freeze({
+    lapMult: 1, gainLog: 0, expAdd: 0, prodLog: 0, ascBase: 10, ascMult: 1,
+    v: Object.freeze([1, 1, 1, 1]), pMultMult: 1, pExpMult: 1, gainPow: 1,
+    disabledPromo: Object.freeze([]), maxCircles: 10, noAscend: false, decay: 0,
+  });
+
+  const hooks = { mods: null, preTick: null, auto: null, postTick: null, stepDt: null };
+
+  function registerHooks(h) {
+    for (const k of Object.keys(h)) if (k in hooks) hooks[k] = h[k];
+  }
+
+  function mods(s) {
+    return hooks.mods ? hooks.mods(s) : DEFAULT_MODS;
+  }
+
+  function isFixed(s) {
+    return !(s.inf.broken && s.inf.ic.active === 0);
+  }
+
   // --- log-space helpers ---
 
   function logAdd(a, b) {
@@ -682,11 +702,12 @@ const Engine = (() => {
   // --- formulas ---
 
   function promoEffects(s) {
-    const [L1, L2, L3, L4] = s.promo;
-    const p4 = 1 + 0.05 * Math.pow(L4, 0.48);
-    const p1 = p4 * (Math.floor(Math.pow(L1, 1.5)) + 1);
-    const p2 = p4 * (1 + Math.sqrt(L2));
-    const p3 = p4 * (10 + Math.pow(L3, 0.82));
+    const m = mods(s);
+    const L = s.promo.map((x, k) => (m.disabledPromo.includes(k) ? 0 : x));
+    const p4 = 1 + 0.05 * Math.pow(L[3], 0.48) * m.v[3];
+    const p1 = p4 * (Math.floor(Math.pow(L[0], 1.5)) * m.v[0] + 1);
+    const p2 = p4 * (1 + Math.sqrt(L[1]) * m.v[1]);
+    const p3 = p4 * (m.ascBase + Math.pow(L[2], 0.82) * m.v[2]) * m.ascMult;
     return { p1, p2, p3, p4 };
   }
 
@@ -699,7 +720,11 @@ const Engine = (() => {
     if (!c.unlocked) return 0;
     const def = CIRCLES[i];
     const p = promoEffects(s);
-    return c.level * def.baseSpeed * p.p2;
+    return c.level * def.baseSpeed * p.p2 * mods(s).lapMult;
+  }
+
+  function multGainPerLapLog(s, i) {
+    return s.circles[i].multGainLog + Math.log10(promoEffects(s).p1) + mods(s).gainLog;
   }
 
   function costLog(s, i) {
@@ -732,7 +757,7 @@ const Engine = (() => {
         break;
       }
     }
-    if (c.bought >= 5) {
+    if (c.bought >= 5 && i + 1 < mods(s).maxCircles) {
       const next = s.circles[i + 1];
       if (next && !next.unlocked) {
         next.unlocked = true;
@@ -743,12 +768,13 @@ const Engine = (() => {
   }
 
   function perRevLog(s) {
+    const m = mods(s);
     let sum = 0;
     for (const c of s.circles) {
       if (c.unlocked) sum += c.multLog;
     }
-    sum += Math.log10(s.pMult);
-    return s.pExp * sum;
+    sum += Math.log10(s.pMult) + m.prodLog;
+    return Math.max(0.1, s.pExp + m.expAdd) * sum;
   }
 
   function incomeLog(s) {
@@ -759,6 +785,11 @@ const Engine = (() => {
   }
 
   function tick(s, dt) {
+    const m = mods(s);
+    s.inf.t += dt;
+    s.inf.tRun += dt;
+    if (hooks.preTick) hooks.preTick(s, dt, m);
+
     const p = promoEffects(s);
     const laps = new Array(s.circles.length).fill(0);
     let N = 0;
@@ -766,23 +797,35 @@ const Engine = (() => {
       const c = s.circles[i];
       if (!c.unlocked) continue;
       const def = CIRCLES[i];
-      const lps = c.level * def.baseSpeed * p.p2;
+      const lps = c.level * def.baseSpeed * p.p2 * m.lapMult;
       c.progress += lps * dt;
       const n = Math.floor(c.progress);
       c.progress -= n;
       c.laps += n;
       laps[i] = n;
       if (n > 0) {
-        c.multLog = logAdd(c.multLog, Math.log10(n) + c.multGainLog + Math.log10(p.p1));
+        c.multLog = logAdd(c.multLog, Math.log10(n) + c.multGainLog + Math.log10(p.p1) + m.gainLog);
       }
       N += n;
     }
+
+    if (m.decay > 0) {
+      for (const c of s.circles) {
+        c.multLog = Math.max(0, c.multLog * Math.pow(1 - m.decay, dt));
+      }
+    }
+
     if (N > 0) {
       s.scoreLog = logAdd(s.scoreLog, Math.log10(N) + perRevLog(s));
     }
+    if (isFixed(s) && s.scoreLog > INFINITY_LOG) s.scoreLog = INFINITY_LOG;
+
     s.stats.totalLaps += N;
     s.stats.playTime += dt;
     s.stats.bestScoreLog = Math.max(s.stats.bestScoreLog, s.scoreLog);
+
+    if (hooks.auto) hooks.auto(s, dt);
+    if (hooks.postTick) hooks.postTick(s, dt);
     return { laps };
   }
 
@@ -808,7 +851,7 @@ const Engine = (() => {
 
   function canAscend(s, i) {
     const c = s.circles[i];
-    return c.unlocked && c.level >= levelCap(c);
+    return !mods(s).noAscend && c.unlocked && c.level >= levelCap(c);
   }
 
   function ascend(s, i) {
@@ -824,9 +867,10 @@ const Engine = (() => {
   // --- prestige ---
 
   function pendingPrestige(s) {
+    const m = mods(s);
     if (s.scoreLog < 3) return { pMult: 1, pExp: 1 };
-    const pMult = TUNE.pMultBase * (s.scoreLog - 3) ** TUNE.pMultPow;
-    const pExp = 1 + Math.max(0, s.scoreLog - 5) / TUNE.pExpDiv;
+    const pMult = Math.pow(TUNE.pMultBase * (s.scoreLog - 3) ** TUNE.pMultPow * m.pMultMult, m.gainPow);
+    const pExp = 1 + (Math.max(0, s.scoreLog - 5) / TUNE.pExpDiv) * m.pExpMult * m.gainPow;
     return { pMult, pExp };
   }
 
@@ -842,20 +886,23 @@ const Engine = (() => {
     s.prestigeReqLog = s.scoreLog;
     s.stats.prestiges++;
     resetRun(s);
+    s.inf.tRun = 0;
+    s.inf.rt = { markLog: -Infinity, markT: 0 };
     return true;
   }
 
   // --- promotions ---
 
   function promoXp(s) {
+    const gainPow = mods(s).gainPow;
     const pending = canPrestige(s) ? pendingPrestige(s).pMult : 0;
-    const m = Math.max(s.pMult, pending);
-    if (m < TUNE.promoMin) return 0;
-    return Math.floor((m / TUNE.promoMin) ** TUNE.promoPow);
+    const mm = Math.max(s.pMult, pending);
+    if (mm < TUNE.promoMin) return 0;
+    return Math.floor(Math.pow((mm / TUNE.promoMin) ** TUNE.promoPow, gainPow));
   }
 
   function canPromote(s, k) {
-    return promoXp(s) > s.promo[k];
+    return !mods(s).disabledPromo.includes(k) && promoXp(s) > s.promo[k];
   }
 
   function promote(s, k) {
@@ -867,6 +914,8 @@ const Engine = (() => {
     s.pExp = 1;
     s.prestigeReqLog = TUNE.prestigeMinLog;
     s.stats.promotions++;
+    s.inf.tRun = 0;
+    s.inf.rt = { markLog: -Infinity, markT: 0 };
     return true;
   }
 
@@ -941,11 +990,17 @@ const Engine = (() => {
     CIRCLES,
     INFINITY_LOG,
     TUNE,
+    DEFAULT_MODS,
+    registerHooks,
+    _hooks: hooks,
+    mods,
+    isFixed,
     newState,
     migrate,
     tick,
     simulate,
     lapsPerSec,
+    multGainPerLapLog,
     perRevLog,
     incomeLog,
     levelCap,
