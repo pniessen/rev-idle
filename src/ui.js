@@ -37,7 +37,7 @@
       label: 'Promote',
       visible: function (s) {
         var pending = Engine.canPrestige(s) ? Engine.pendingPrestige(s).pMult : 0;
-        if (s.pMult >= 1000 || pending >= 1000) return true;
+        if (s.pMult >= Engine.TUNE.promoMin || pending >= Engine.TUNE.promoMin) return true;
         for (var i = 0; i < s.promo.length; i++) if (s.promo[i] > 0) return true;
         return false;
       },
