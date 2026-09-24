@@ -49,8 +49,8 @@ test('lapsPerSec and tick produce laps, mult and score', () => {
   const r = E.tick(s, 2.5);
   assert.deepEqual(r.laps.slice(0, 2), [2, 0]);
   close(s.circles[0].progress, 0.5);
-  close(s.circles[0].multLog, Math.log10(1 + 2 * 0.01));
-  close(s.scoreLog, Math.log10(2) + Math.log10(1.02));
+  close(s.circles[0].multLog, Math.log10(1 + 2 * 10 ** E.TUNE.multGainLog0));
+  close(s.scoreLog, Math.log10(2) + Math.log10(1 + 2 * 10 ** E.TUNE.multGainLog0));
   assert.equal(s.stats.totalLaps, 2);
 });
 
@@ -95,7 +95,7 @@ test('ascend at cap', () => {
   assert.ok(E.ascend(s, 0));
   assert.equal(c.level, 5); assert.equal(c.ascensions, 1);
   assert.equal(E.levelCap(c), 110);
-  close(c.multGainLog, -1); close(c.multLog, 1);
+  close(c.multGainLog, E.TUNE.multGainLog0 + 1); close(c.multLog, 1);
   assert.ok(!E.canAscend(s, 0));
 });
 
@@ -104,7 +104,7 @@ test('prestige gains and reset', () => {
   s.scoreLog = 9.9; assert.ok(!E.canPrestige(s));
   s.scoreLog = 10; assert.ok(E.canPrestige(s));
   const g = E.pendingPrestige(s);
-  close(g.pMult, 2.56 * 7 ** 2.25); close(g.pExp, 1 + 5 / 225);
+  close(g.pMult, E.TUNE.pMultBase * 7 ** E.TUNE.pMultPow); close(g.pExp, 1 + 5 / E.TUNE.pExpDiv);
   E.prestige(s);
   close(s.pMult, g.pMult); assert.equal(s.scoreLog, -Infinity);
   assert.equal(s.circles[0].level, 5); assert.equal(s.prestigeReqLog, 10);
@@ -114,12 +114,15 @@ test('prestige gains and reset', () => {
 
 test('promotion xp and promote', () => {
   const s = E.newState();
-  s.pMult = 999; assert.equal(E.promoXp(s), 0); assert.ok(!E.canPromote(s, 0));
-  s.pMult = 16000; assert.equal(E.promoXp(s), 8);
+  const T = E.TUNE;
+  s.pMult = T.promoMin - 1; assert.equal(E.promoXp(s), 0); assert.ok(!E.canPromote(s, 0));
+  s.pMult = 16 * T.promoMin;
+  const xp = Math.floor(16 ** T.promoPow); assert.ok(xp >= 1);
+  assert.equal(E.promoXp(s), xp);
   assert.ok(E.promote(s, 1));
-  assert.deepEqual(s.promo, [0, 8, 0, 0]);
+  assert.deepEqual(s.promo, [0, xp, 0, 0]);
   assert.equal(s.pMult, 1); assert.equal(s.stats.promotions, 1);
-  s.pMult = 16000; assert.ok(!E.canPromote(s, 1)); assert.ok(E.canPromote(s, 0));
+  s.pMult = 16 * T.promoMin; assert.ok(!E.canPromote(s, 1)); assert.ok(E.canPromote(s, 0));
 });
 
 test('infinity', () => {

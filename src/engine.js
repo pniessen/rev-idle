@@ -24,8 +24,11 @@ const Engine = (() => {
     pMultPow: 2.25,
     pExpDiv: 225,
     prestigeMinLog: 10,
-    promoMin: 1000,
+    promoMin: 2000, // tuned (spec: 1000) — see test/sim.js / task-3 report
     promoPow: 0.75,
+    // log10 of a fresh circle's base mult gain. Spec/wiki: 0.01; tuned to 0.04
+    // so the first prestige lands at ~10 min instead of ~28 min (task-3 report).
+    multGainLog0: Math.log10(0.04),
   };
 
   // --- log-space helpers ---
@@ -53,7 +56,7 @@ const Engine = (() => {
       bought: 0,
       ascensions: 0,
       multLog: 0,
-      multGainLog: -2,
+      multGainLog: TUNE.multGainLog0,
       progress: 0,
       laps: 0,
     };
@@ -66,7 +69,7 @@ const Engine = (() => {
       circles: CIRCLES.map((_, i) => freshCircle(i)),
       pMult: 1,
       pExp: 1,
-      prestigeReqLog: 10,
+      prestigeReqLog: TUNE.prestigeMinLog,
       promo: [0, 0, 0, 0],
       ip: 0,
       infinities: 0,
@@ -261,7 +264,7 @@ const Engine = (() => {
     resetRun(s);
     s.pMult = 1;
     s.pExp = 1;
-    s.prestigeReqLog = 10;
+    s.prestigeReqLog = TUNE.prestigeMinLog;
     s.stats.promotions++;
     return true;
   }
