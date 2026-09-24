@@ -161,6 +161,14 @@ test('timers advance; prestige and promote reset tRun and the stall tracker', ()
   assert.ok(E.promote(s, 0)); assert.equal(s.inf.tRun, 0);
 });
 
+test('promoXp applies gainPow once to raw pending pMult (spec §3)', () => {
+  const s = E.newState(); s.scoreLog = 100; // canPrestige(s) is true
+  const raw = E.TUNE.pMultBase * (100 - 3) ** E.TUNE.pMultPow; // pMultMult = 1, no gainPow yet
+  const mm = Math.max(s.pMult, raw);
+  const expected = Math.floor(Math.pow((mm / E.TUNE.promoMin) ** E.TUNE.promoPow, 0.4));
+  withMods({ gainPow: 0.4 }, () => assert.equal(E.promoXp(s), expected));
+});
+
 test('registerHooks runs preTick, auto, postTick in order', () => {
   const saved = Object.assign({}, E._hooks); const seen = [];
   E.registerHooks({ preTick: () => seen.push('pre'), auto: () => seen.push('auto'), postTick: () => seen.push('post') });

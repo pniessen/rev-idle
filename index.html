@@ -873,10 +873,15 @@ const Engine = (() => {
 
   // --- prestige ---
 
+  function rawPendingPMult(s, m) {
+    if (s.scoreLog < 3) return 1;
+    return TUNE.pMultBase * (s.scoreLog - 3) ** TUNE.pMultPow * m.pMultMult;
+  }
+
   function pendingPrestige(s) {
     const m = mods(s);
     if (s.scoreLog < 3) return { pMult: 1, pExp: 1 };
-    const pMult = Math.pow(TUNE.pMultBase * (s.scoreLog - 3) ** TUNE.pMultPow * m.pMultMult, m.gainPow);
+    const pMult = Math.pow(rawPendingPMult(s, m), m.gainPow);
     const pExp = 1 + (Math.max(0, s.scoreLog - 5) / TUNE.pExpDiv) * m.pExpMult * m.gainPow;
     return { pMult, pExp };
   }
@@ -901,11 +906,11 @@ const Engine = (() => {
   // --- promotions ---
 
   function promoXp(s) {
-    const gainPow = mods(s).gainPow;
-    const pending = canPrestige(s) ? pendingPrestige(s).pMult : 0;
+    const m = mods(s);
+    const pending = canPrestige(s) ? rawPendingPMult(s, m) : 0;
     const mm = Math.max(s.pMult, pending);
     if (mm < TUNE.promoMin) return 0;
-    return Math.floor(Math.pow((mm / TUNE.promoMin) ** TUNE.promoPow, gainPow));
+    return Math.floor(Math.pow((mm / TUNE.promoMin) ** TUNE.promoPow, m.gainPow));
   }
 
   function canPromote(s, k) {
