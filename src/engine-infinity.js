@@ -476,6 +476,10 @@
   });
 
   function postTick(s) {         // spec §2.1
+    // A confirmation can only be pending at the cap: anything that dropped the
+    // score below it (an old save, a reset that slipped in) clears it, so the
+    // UI never shows a modal whose "Go Infinite" cannot succeed.
+    if (s.inf.pendingConfirm && !E.canInfinity(s)) s.inf.pendingConfirm = false;
     if (!E.isFixed(s) || !E.canInfinity(s)) return;
     if (s.infinities === 0 || s.inf.auto.confirmInfinity) { s.inf.pendingConfirm = true; return; }
     goInfinite(s);

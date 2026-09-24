@@ -273,6 +273,37 @@ test('fixed Infinity: first waits for confirmation, later ones are automatic', (
   assert.equal(s.infinities, 2); assert.equal(s.inf.pendingConfirm, true);
 });
 
+// Final review Critical 1: the modal only appears on the next DOM update, so
+// a Prestige/Promote click can land between the tick that sets pendingConfirm
+// and the modal. Score stays capped while an Infinity awaits confirmation.
+test('pendingConfirm: prestige/promote are refused while an Infinity awaits confirmation', () => {
+  const s = atInfinity(E.newState()); s.pMult = 1e9;
+  E.tick(s, 0.01);
+  assert.equal(s.inf.pendingConfirm, true);
+  assert.ok(E.canPrestige(s) && E.canPromote(s, 0));
+  assert.equal(E.prestige(s), false); assert.equal(E.promote(s, 0), false);
+  assert.equal(s.scoreLog, E.INFINITY_LOG); assert.equal(s.inf.pendingConfirm, true);
+  assert.equal(s.stats.prestiges, 0); assert.equal(s.stats.promotions, 0);
+  assert.ok(E.goInfinite(s)); assert.equal(s.infinities, 1); assert.equal(s.inf.pendingConfirm, false);
+});
+
+test('pendingConfirm never outlives the cap (cleared on the next tick)', () => {
+  const s = atInfinity(E.newState()); E.tick(s, 0.01); assert.equal(s.inf.pendingConfirm, true);
+  s.scoreLog = 50; // e.g. a reset that slipped in before the confirmation
+  E.tick(s, 0.01);
+  assert.equal(s.inf.pendingConfirm, false);
+});
+
+test('a loaded save with pendingConfirm but below the cap comes out cleared after the first tick', () => {
+  const st = E.newState(); st.inf.pendingConfirm = true; st.scoreLog = 50;
+  const s = E.deserialize(b64(st));
+  E.tick(s, 0.01);
+  assert.equal(s.inf.pendingConfirm, false);
+  const at = E.newState(); at.inf.pendingConfirm = true; at.scoreLog = E.INFINITY_LOG;
+  const s2 = E.deserialize(b64(at)); E.tick(s2, 0.01);
+  assert.equal(s2.inf.pendingConfirm, true); assert.ok(E.canInfinity(s2));
+});
+
 test('broken: no automatic Infinity', () => {
   const s = E.newState(); s.infinities = 3; s.inf.broken = true; s.scoreLog = 400;
   E.tick(s, 0.01); assert.equal(s.infinities, 3); assert.ok(E.canInfinity(s));
@@ -590,6 +621,17 @@ test('auto-infinity: broken, owned, thresholds met', () => {
   E.autoStep(s, 0.1); assert.equal(s.infinities, 1);
   s.inf.auto.infinity.minIpLog = 0; s.inf.auto.infinity.minTime = 10; E.autoStep(s, 0.1); assert.equal(s.infinities, 1);
   s.inf.auto.infinity.minTime = 0; E.autoStep(s, 0.1); assert.equal(s.infinities, 2);
+});
+
+test('Confirm each Infinity + automation: a stalled run waits at the cap instead of resetting', () => {
+  const s = autoState('1;1', '2;2', '3;2', '4;1', '5;3');
+  s.inf.auto.confirmInfinity = true; s.pMult = 1e9; s.inf.tRun = 100; s.inf.rt = { markLog: E.INFINITY_LOG, markT: 0 };
+  atInfinity(s);
+  for (let i = 0; i < 50; i++) E.tick(s, 0.1);
+  assert.equal(s.inf.pendingConfirm, true);
+  assert.equal(s.scoreLog, E.INFINITY_LOG);
+  assert.equal(s.stats.prestiges, 0); assert.equal(s.stats.promotions, 0);
+  assert.ok(E.goInfinite(s)); assert.equal(s.infinities, 2);
 });
 
 test('tick runs autoStep', () => {

@@ -374,7 +374,7 @@ const Engine = (() => {
   }
 
   function prestige(s) {
-    if (!canPrestige(s)) return false;
+    if (!canPrestige(s) || awaitingInfinity(s)) return false;
     const g = pendingPrestige(s);
     s.pMult = Math.max(s.pMult, g.pMult);
     s.pExp = Math.max(s.pExp, g.pExp);
@@ -402,7 +402,7 @@ const Engine = (() => {
   }
 
   function promote(s, k) {
-    if (!canPromote(s, k)) return false;
+    if (!canPromote(s, k) || awaitingInfinity(s)) return false;
     const xp = promoXp(s);
     s.promo[k] = xp;
     resetRun(s);
@@ -419,6 +419,17 @@ const Engine = (() => {
 
   function canInfinity(s) {
     return s.scoreLog >= INFINITY_LOG;
+  }
+
+  // Spec §2.1: at the fixed cap with the first Infinity (or "Confirm each
+  // Infinity") the run waits for the player's confirmation and the score
+  // stays capped — prestige/promote (manual or automatic) are refused so a
+  // click landing between the capping tick and the modal cannot reset the
+  // run under a pending confirmation. True from the capping tick onwards
+  // (postTick sets pendingConfirm at the end of that same tick).
+  function awaitingInfinity(s) {
+    if (!canInfinity(s)) return false; // a stale flag below the cap never blocks
+    return s.inf.pendingConfirm || (isFixed(s) && (s.infinities === 0 || !!s.inf.auto.confirmInfinity));
   }
 
   // --- serialize ---
@@ -498,6 +509,7 @@ const Engine = (() => {
     canPromote,
     promote,
     canInfinity,
+    awaitingInfinity,
     serialize,
     deserialize,
     promoEffects,

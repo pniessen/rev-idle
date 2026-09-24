@@ -306,6 +306,10 @@
     for (let iter = 0; iter < E.TUNE.autoStepMaxIter; iter++) {
       let did = false;
       const m = E.mods(s);
+      // Spec §2.1: while an Infinity awaits the player's confirmation the
+      // score stays capped, so nothing may spend or reset it (only a broken
+      // run's Auto-Infinity can still resolve it).
+      if (E.awaitingInfinity(s)) { if (autoInfinity(s, u)) { actions.push('infinity'); continue; } break; }
       if (autoAscend(s, u, m, cache)) { actions.push('ascend'); did = true; }
       if (autoBuy(s, u, m, cache)) { actions.push('buy'); did = true; }
       if (autoPromote(s, u, m)) { actions.push('promote'); did = true; continue; }
