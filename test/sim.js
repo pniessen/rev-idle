@@ -307,13 +307,16 @@ function buyScriptedList(s, ctx) {
   }
 }
 
-// Column helper: any owned upgrade in column `col`.
+// Column helper: any owned upgrade in column `col`. The spec's "after
+// column N" gates (§13.3) don't spell out the exact predicate; this sim
+// interprets it as "any node in that column is owned", not "every node".
 function colOwned(s, col) {
   return E.UPGRADES.some((u) => u.col === col && E.hasUpg(s, u.id));
 }
 
 // IC readiness gates, spec §13.3, checked only when no challenge is active
 // and the previous IC in the chain is done (canStartChallenge enforces that).
+// See colOwned's comment for the "after column N" interpretation.
 function icGateReady(s, n) {
   switch (n) {
     case 1: case 2: return E.hasUpg(s, '7;1');
@@ -485,6 +488,33 @@ function recordMilestone(m, key, t, tInf1, value) {
   m[key] = { t, tInf: tInf1 === null ? null : t - tInf1, value };
 }
 
+// Shared post-step check used after every stepped tick AND after a single
+// bulk E.simulate() call (the OFFLINE=1 night gap): records newly-completed
+// IC attempts (from an ic.done diff against `beforeIcDone`, unioned with
+// `icCompletedList` — the `icCompleted` field E.simulate returns, which also
+// catches post-Break re-runs of an already-done challenge within the same
+// call) and the state-level milestones (7;1, Break, col17, first Star,
+// finale). `end` for an IC attempt discovered this way is `ctx.t` (the time
+// after the whole step/gap), since a bulk simulate() does not expose exactly
+// when inside it the challenge completed.
+function checkPostRunMilestones(s, ctx, beforeIcDone, icCompletedList) {
+  const completedNow = new Set(icCompletedList || []);
+  for (let n = 1; n <= 9; n++) {
+    const newlyDone = s.inf.ic.done[n - 1] && !beforeIcDone[n - 1];
+    if (newlyDone || completedNow.has(n)) {
+      const start = ctx.icStartT[n] || ctx.t;
+      ctx.icAttempts.push({ n, start, end: ctx.t, duration: ctx.t - start, abandoned: false });
+      recordMilestone(ctx.milestones, `ic${n}`, ctx.t, ctx.tInf1, ctx.t - start);
+    }
+  }
+  const tInf = ctx.tInf1 === null ? null : ctx.t - ctx.tInf1;
+  if (E.hasUpg(s, '7;1')) recordMilestone(ctx.milestones, 'ic7_1', ctx.t, ctx.tInf1, tInf);
+  if (E.canBreak(s)) recordMilestone(ctx.milestones, 'break', ctx.t, ctx.tInf1, tInf);
+  if (s.inf.ipLog >= 6) recordMilestone(ctx.milestones, 'col17', ctx.t, ctx.tInf1, tInf);
+  if (s.inf.stars.n >= 1) recordMilestone(ctx.milestones, 'star1', ctx.t, ctx.tInf1, tInf);
+  if (s.inf.ipLog >= E.INFINITY_LOG) recordMilestone(ctx.milestones, 'finale', ctx.t, ctx.tInf1, tInf);
+}
+
 // ---- macro-stepping (spec §13 strategy 2) --------------------------------
 
 // After every completed Infinity, this pushes {runTime, ipGainLog, infGain}
@@ -503,8 +533,13 @@ function macroStepEligible(s, ctx) {
   const times = runs.map((r) => r.runTime);
   const maxT = Math.max(...times), minT = Math.min(...times);
   if (maxT === 0 || (maxT - minT) / maxT > 0.02) return false;
+  // ipGainLog equality is checked with a tolerance (log10(1.02), i.e. within
+  // 2% in linear terms) rather than bit-exact: `chooseMacroK`'s drift-check
+  // halving (5%, on a cloned state) is the real accuracy guard, so this only
+  // has to recognize "close enough to steady state" to fire at all.
   const gains = runs.map((r) => r.ipGainLog);
-  if (!gains.every((g) => g === gains[0])) return false;
+  const tol = Math.log10(1.02);
+  if (!gains.every((g) => Math.abs(g - gains[0]) < tol)) return false;
   return true;
 }
 
@@ -540,10 +575,13 @@ function chooseMacroK(s, ctx, runTime, ipGainLog, infGain, untilCheckin) {
     }
   }
   if (k < 1) return 0;
+  // One clone reused across the halving loop (only `infinities` changes
+  // between tries) instead of a fresh deserialize per candidate k.
+  const clone = E.deserialize(E.serialize(s));
+  const baseInfinities = clone.infinities;
+  const before = { ip: E.ipGainLog(clone), gm: E.genMultLog(clone, 0) };
   const drift = (kk) => {
-    const clone = E.deserialize(E.serialize(s));
-    const before = { ip: E.ipGainLog(clone), gm: E.genMultLog(clone, 0) };
-    clone.infinities += kk * infGain;
+    clone.infinities = baseInfinities + kk * infGain;
     const after = { ip: E.ipGainLog(clone), gm: E.genMultLog(clone, 0) };
     const dIp = Math.abs(after.ip - before.ip);
     const dGm = Math.abs(after.gm - before.gm);
@@ -578,6 +616,12 @@ function advanceTo(s, ctx, targetT, m) {
       if (VERBOSE) console.log(`  [Infinity ${s.infinities.toFixed(2)}] t=${fmtT(ctx.t)} run=${fmtT(rt)}`);
       ctx.infinityIndex++;
       noteInfinity(ctx, rt, ig, ctx.lastInfGain);
+      // The "no check-in purchase happened" macro-step gate should only
+      // veto the run(s) immediately following a purchase, not every run for
+      // the rest of a long gap: once a full Infinity has completed since
+      // the last check-in, this is a fresh sample and last5 (matching
+      // runtimes/gains over 5 in a row) is what actually judges steadiness.
+      ctx.purchased = false;
       recordMilestone(ctx.milestones, 'inf1', ctx.t, ctx.tInf1, ctx.t);
       if (ctx.infinityIndex === 2) recordMilestone(ctx.milestones, 'run2', ctx.t, ctx.tInf1, rt);
       if (ctx.infinityIndex === 3) recordMilestone(ctx.milestones, 'run3', ctx.t, ctx.tInf1, rt);
@@ -588,20 +632,9 @@ function advanceTo(s, ctx, targetT, m) {
       ctx.curRunPeak = -Infinity;
       ctx.lastSampleT = 0;
     }
-    for (let n = 1; n <= 9; n++) {
-      if (s.inf.ic.done[n - 1] && !beforeIcDone[n - 1]) {
-        const start = ctx.icStartT[n] || ctx.t;
-        ctx.icAttempts.push({ n, start, end: ctx.t, duration: ctx.t - start, abandoned: false });
-        recordMilestone(ctx.milestones, `ic${n}`, ctx.t, ctx.tInf1, ctx.t - start);
-      }
-    }
-    if (E.hasUpg(s, '7;1')) recordMilestone(ctx.milestones, 'ic7_1', ctx.t, ctx.tInf1, ctx.tInf1 === null ? null : ctx.t - ctx.tInf1);
-    if (E.canBreak(s)) recordMilestone(ctx.milestones, 'break', ctx.t, ctx.tInf1, ctx.tInf1 === null ? null : ctx.t - ctx.tInf1);
-    if (s.inf.ipLog >= 6) recordMilestone(ctx.milestones, 'col17', ctx.t, ctx.tInf1, ctx.tInf1 === null ? null : ctx.t - ctx.tInf1);
-    if (s.inf.stars.n >= 1) recordMilestone(ctx.milestones, 'star1', ctx.t, ctx.tInf1, ctx.tInf1 === null ? null : ctx.t - ctx.tInf1);
-    if (s.inf.ipLog >= E.INFINITY_LOG) recordMilestone(ctx.milestones, 'finale', ctx.t, ctx.tInf1, ctx.tInf1 === null ? null : ctx.t - ctx.tInf1);
+    checkPostRunMilestones(s, ctx, beforeIcDone);
 
-    // Opportunistic macro-step once a steady state of 5 identical runs shows up.
+    // Opportunistic macro-step once a steady state of near-identical runs shows up.
     if (macroStepEligible(s, ctx)) {
       const last = ctx.last5[ctx.last5.length - 1];
       const untilCheckin = targetT - ctx.t;
@@ -707,14 +740,7 @@ function runLayerCore(startState, startT, startTInf1, endT, opts) {
       fourOwnedCheckAndMilestone(s, ctx);
       if (fourAutomationsOwned(s)) { idleStarted = true; idleStartT = ctx.t; }
     }
-    for (let n = 1; n <= 9; n++) {
-      if (s.inf.ic.done[n - 1] && !beforeIcDone[n - 1]) {
-        const start = ctx.icStartT[n] || ctx.t;
-        ctx.icAttempts.push({ n, start, end: ctx.t, duration: ctx.t - start, abandoned: false });
-        recordMilestone(ctx.milestones, `ic${n}`, ctx.t, ctx.tInf1, ctx.t - start);
-      }
-    }
-    if (E.hasUpg(s, '7;1')) recordMilestone(ctx.milestones, 'ic7_1', ctx.t, ctx.tInf1, ctx.tInf1 === null ? null : ctx.t - ctx.tInf1);
+    checkPostRunMilestones(s, ctx, beforeIcDone);
   }
 
   // ---- Idle profile: check-ins at fixed day hours + one night gap ------
@@ -730,13 +756,15 @@ function runLayerCore(startState, startT, startTInf1, endT, opts) {
           // the whole 8 h gap.
           const remaining = Math.min(NIGHT_SEC, endT - ctx.t, targetT - ctx.t);
           if (remaining > 0) {
-            const before = { inf: s.infinities, doneCount: E.icDoneCount(s) };
-            E.simulate(s, remaining);
+            const beforeInf = s.infinities;
+            const beforeIcDone = s.inf.ic.done.slice();
+            const result = E.simulate(s, remaining);
             ctx.t += remaining;
-            if (s.infinities > before.inf) {
+            if (s.infinities > beforeInf) {
               const last = s.stats.lastInfinities[s.stats.lastInfinities.length - 1];
-              if (last) { ctx.infinityIndex += Math.max(1, Math.round(s.infinities - before.inf)); recordMilestone(ctx.milestones, 'inf1', ctx.t, ctx.tInf1, ctx.t); }
+              if (last) { ctx.infinityIndex += Math.max(1, Math.round(s.infinities - beforeInf)); recordMilestone(ctx.milestones, 'inf1', ctx.t, ctx.tInf1, ctx.t); }
             }
+            checkPostRunMilestones(s, ctx, beforeIcDone, result.icCompleted);
           }
         } else {
           advanceTo(s, ctx, Math.min(targetT, endT), null);
@@ -781,6 +809,10 @@ function runLayer() {
   } else {
     s = E.newState();
   }
+  // Pristine copy of the starting state (before runLayerCore mutates `s`),
+  // so the CHECK=1 OFFLINE comparison below can start from the exact same
+  // point (FROM snapshot or fresh game) as this primary run.
+  const initSaveStr = E.serialize(s);
   const endT = DAYS * 86400;
   const ctx = runLayerCore(s, startT, startTInf1, endT);
   const wall = (Date.now() - wall0) / 1000;
@@ -801,10 +833,13 @@ function runLayer() {
     // OFFLINE=1 comparison: this invocation ran stepped; now re-run with
     // OFFLINE=1 and compare milestones within +-15%.
     if (!OFFLINE) {
-      const s2 = E.newState();
+      // Start from the same point as the primary run (FROM snapshot or a
+      // fresh game) — not always a fresh game — so the comparison is
+      // apples-to-apples even when resuming from a snapshot.
+      const s2 = E.deserialize(initSaveStr);
       const ctx2Wall0 = Date.now();
       process.env.OFFLINE = '1';
-      const ctx2 = runLayerCore(s2, 0, null, endT);
+      const ctx2 = runLayerCore(s2, startT, startTInf1, endT);
       process.env.OFFLINE = '';
       const wall2 = (Date.now() - ctx2Wall0) / 1000;
       console.log(`Wall time (MODE=layer OFFLINE=1): ${wall2.toFixed(2)}s`);
